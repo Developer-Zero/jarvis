@@ -3,6 +3,10 @@ import time
 import threading
 
 
+#from backend.robusts import formatJson # Fixing json with robusting
+from config import ttt_mode, ttt_model, max_message_history, max_query_length, max_steps
+from backend.tools.registry import build_default_registry, tool_result_for_model
+
 SYSTEM_PROMPT = """
 You are a Jarvis-like AI assistant.
 
@@ -158,15 +162,13 @@ SYSTEM_TOOLS = [
 ]
 
 
-#from backend.robusts import formatJson # Fixing json with robusting
-from config import ttt_mode, ttt_model, max_message_history, max_query_length, max_steps
-import backend.commands as commands
 
 class Agent:
     def __init__(self):
         self.messages = [] # Message history with system prompt
         self.prompt = SYSTEM_PROMPT
-        self.tools = SYSTEM_TOOLS
+        self.tool_registry = build_default_registry()
+        self.tools = self.tool_registry.get_openai_schemas()
         
         self.max_history = max_message_history
         self.max_query_length = max_query_length
@@ -228,44 +230,33 @@ class Agent:
 
 
     def execute_commands(self, tool_calls):
-        if tool_calls:
-            for tool in tool_calls:
-                name = tool.function.name
-                args = json.loads(tool.function.arguments)
-                result = ""
-                
-                if name == "open_url":
-                    commands.open_url(args["url"])
-                    result = json.dumps({"name": name, "url": args["url"]})
-                elif name == "set_volume":
-                    commands.set_volume(args["direction"], args["amount"])
-                    result = json.dumps({"name": name, "direction": args["direction"], "amount": args["amount"]})
-                elif name == "wait":
-                    time.sleep(args["seconds"])
-                    result = json.dumps({"name": name, "seconds": args["seconds"]})
-                elif name == "open_file":
-                    message = commands.open_file(args["path"])
-                    if message["status"] == "error":
-                        result = json.dumps({"name": name, "path": args["path"], "status": "error", "error": message["content"]})
-                    else:
-                        result = json.dumps({"name": name, "path": args["path"], "status": "ok"})
-                elif name == "read_file":
-                    message = commands.read_file(args["path"])
-                    if message["status"] == "error":
-                        result = json.dumps({"name": name, "path": args["path"], "status": "error", "error": message["content"]})
-                    else:
-                        result = json.dumps({"name": name, "path": args["path"], "status": "ok", "query": message["content"]})
-                elif name == "list_files":
-                    message = commands.list_files(args["path"])
-                    if message["status"] == "error":
-                        result = json.dumps({"name": name, "path": args["path"], "status": "error", "error": message["content"]})
-                    else:
-                        result = json.dumps({"name": name, "path": args["path"], "status": "ok", "query": message["content"]})
-                else:
-                    result = json.dumps({"name": name, "status": "error", "error": "Requested tool doesn't exist"})
+        for tool_call in tool_calls:
+            name = tool_call.function.name
 
-                if result:
-                    self.messages.append({"role": "tool", "tool_call_id": tool.id, "content": result[:self.max_query_length]})
+            try:
+                args = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError as e:
+                result = json.dumps({
+                    "name": name,
+                    "status": "error",
+                    "error": f"Invalid JSON arguments: {e}",
+                }, ensure_ascii=False)
+
+                self.messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result[:self.max_query_length],
+                })
+                continue
+
+            tool_result = self.tool_registry.execute(name, args)
+            result = tool_result_for_model(name, tool_result)
+
+            self.messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result[:self.max_query_length],
+            })
 
 
 # Module-level instance and function for easy import
