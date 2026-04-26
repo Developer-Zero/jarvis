@@ -56,113 +56,6 @@ This is not a chatbot.
 It is a tool-driven execution agent with a natural language interface.
 """
 
-SYSTEM_TOOLS = [
-{
-    "type": "function",
-    "function": {
-        "name": "open_url",
-        "description": "Open a website in the default browser",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string"
-                }
-            },
-            "required": ["url"]
-        }
-    }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "open_file",
-        "description": "Launch a file at a given path",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string"
-                }
-            },
-            "required": ["path"]
-        }
-    }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "set_volume",
-        "description": "Change system volume",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "direction": {
-                    "type": "string",
-                    "enum": ["up", "down"]
-                },
-                "amount": {
-                    "type": "number",
-                    "description": "Change amount in percentages"
-                }
-            },
-            "required": ["direction", "amount"]
-        }
-    }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "wait",
-        "description": "Pause execution for a given number of seconds",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                    "seconds": {
-                        "type": "number"
-                    }
-                },
-            "required": ["seconds"]
-        }
-    }
-},
-# Query
-{
-    "type": "function",
-    "function": {
-        "name": "list_files",
-        "description": "List files and folders in a given directory path",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string"
-                }
-            },
-            "required": ["path"]
-        }
-    }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "read_file",
-        "description": "Read the content of a file as text",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string"
-                }
-            },
-            "required": ["path"]
-        }
-    }
-}
-]
-
-
-
 class Agent:
     def __init__(self):
         self.messages = [] # Message history with system prompt
@@ -178,6 +71,34 @@ class Agent:
             from openai import OpenAI
             self.client = OpenAI()
     
+    def get_safe_history(self):
+        history = self.messages[-self.max_history:]
+
+        while history and history[0]["role"] == "tool":
+            history.pop(0)
+
+        valid_tool_call_ids = set()
+
+        for msg in history:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                for tool_call in msg["tool_calls"]:
+                    if isinstance(tool_call, dict):
+                        valid_tool_call_ids.add(tool_call["id"])
+                    else:
+                        valid_tool_call_ids.add(tool_call.id)
+
+        safe_history = []
+
+        for msg in history:
+            if msg["role"] == "tool":
+                if msg.get("tool_call_id") not in valid_tool_call_ids:
+                    continue
+
+            safe_history.append(msg)
+
+        return safe_history
+
+
     def ask_model(self):
         if ttt_mode == "openai":
             try:
@@ -185,7 +106,7 @@ class Agent:
                         model=ttt_model,
                         tools=self.tools,
                         tool_choice="auto",
-                        messages=([{"role": "system", "content": f"{self.prompt}"}] + self.messages[-self.max_history:]),
+                        messages=([{"role": "system", "content": self.prompt}] + self.get_safe_history()),
                         temperature=0.3
                 )
                 return response
@@ -216,9 +137,24 @@ class Agent:
             message = response.choices[0].message
             
             # Add assistant response with tool_calls to 'messages'
-            assistant_message = {"role": "assistant", "content": message.content or ""}
+            assistant_message = {
+                "role": "assistant",
+                "content": message.content or ""
+            }
+
             if message.tool_calls:
-                assistant_message["tool_calls"] = message.tool_calls
+                assistant_message["tool_calls"] = [
+                    {
+                        "id": tool_call.id,
+                        "type": tool_call.type,
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    }
+                    for tool_call in message.tool_calls
+                ]
+
             self.messages.append(assistant_message)
             
             print("Model responded: executing tasks")
