@@ -38,6 +38,7 @@ def record_user_speech(
     vad_model=None,
     sample_rate: int = config_samplerate,
     block_size: int = 512,
+    should_stop=None,
 
     calibration_seconds: float = 1.0,
     no_speech_timeout: float = 4.0,
@@ -88,6 +89,10 @@ def record_user_speech(
         calibration_end = time.perf_counter() + calibration_seconds
 
         while time.perf_counter() < calibration_end:
+            if should_stop is not None and should_stop():
+                print("Recording cancelled.")
+                return None
+
             data, overflowed = stream.read(block_size)
             frame = data[:, 0].copy()
 
@@ -117,6 +122,10 @@ def record_user_speech(
         global_start_time = time.perf_counter()
 
         while True:
+            if should_stop is not None and should_stop():
+                print("Recording cancelled.")
+                return None
+
             now = time.perf_counter()
 
             # Emergency stop

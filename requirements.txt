@@ -10,3 +10,4 @@ python-pptx
 sounddevice
 soundfile
 torch
+psutil

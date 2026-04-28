@@ -7,19 +7,7 @@ from urllib.parse import urlparse
 
 from backend.tools.base import Tool, ToolResult
 
-BLOCKED_EXECUTABLE_EXTENSIONS = {
-    ".bat",
-    ".cmd",
-    ".com",
-    ".exe",
-    ".jar",
-    ".js",
-    ".lnk",
-    ".msi",
-    ".ps1",
-    ".scr",
-    ".vbs",
-}
+BLOCKED_EXECUTABLE_EXTENSIONS = {}
 
 
 def _validate_url(url: str) -> ToolResult | None:

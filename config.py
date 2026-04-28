@@ -7,7 +7,7 @@ block_size = 1024
 
 # Wake word detection
 wake_word_model = "hey_jarvis" # models: "hey_jarvis", "hey_alexa", "hey_google", etc.
-wake_word_threshold = 0.22 # sensitive 0-1 non-sensitive
+wake_word_threshold = 0.3 # sensitive 0-1 non-sensitive
 
 # Speech recording
 silence_duration = 1 # To end recording in seconds

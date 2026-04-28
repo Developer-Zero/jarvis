@@ -10,6 +10,7 @@ import atexit
 import shutil
 import tempfile
 import threading
+import time
 
 # Frontend tools
 from playsound import playsound
@@ -48,17 +49,27 @@ def play_wake_sound() -> None:
 def listen_for_wake_word() -> bool:
     gui.set_state("idle")
 
-    with WakeWordDetector() as detector:
-        while True:
-            if detector.detect():
-                print("Wake word detected")
-                play_wake_sound()
-                return True
+    while True:
+        if gui.get_muted():
+            gui.set_state("muted")
+            time.sleep(0.1)
+            continue
+
+        with WakeWordDetector() as detector:
+            while not gui.get_muted():
+                if detector.detect():
+                    print("Wake word detected")
+                    play_wake_sound()
+                    return True
 
 
 def record_speech() -> str | None:
+    if gui.get_muted():
+        gui.set_state("muted")
+        return None
+
     gui.set_state("listening")
-    audio_np = record_user_speech()
+    audio_np = record_user_speech(should_stop=gui.get_muted)
     if audio_np is not None:
         gui.set_state("thinking")
         print("Recording ended successfully: transcribing starting")
@@ -75,15 +86,18 @@ def record_speech() -> str | None:
 
 
 def agent(user_input: str) -> None:
-    gui.set_state("talking")
-    gui.send_message("User", user_input)
+    try:
+        gui.set_state("talking")
+        gui.send_message("User", user_input)
 
-    response = ask_agent(user_input)
+        response = ask_agent(user_input)
 
-    if response:
-        gui.send_message("Jarvis", response)
-        queue_tts(response)
-        wait_for_tts()
+        if response:
+            gui.send_message("Jarvis", response)
+            queue_tts(response)
+            wait_for_tts()
+    finally:
+        gui.set_state("muted" if gui.get_muted() else "idle")
 
 
 def main() -> None:
@@ -104,5 +118,6 @@ def main() -> None:
         should_wait_for_wake_word = False
 
 if __name__ == "__main__":
+    gui.set_text_command(agent)
     threading.Thread(target=main, daemon=True).start()
     gui.root.mainloop()
