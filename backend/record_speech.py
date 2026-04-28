@@ -3,11 +3,11 @@ from collections import deque
 
 import numpy as np
 import sounddevice as sd
-import torch
 
+from config import samplerate as config_samplerate
 
-samplerate = 16000
 block_size = 512
+_vad_model = None
 
 
 def rms(x: np.ndarray) -> float:
@@ -20,21 +20,23 @@ def normalize(audio: np.ndarray) -> np.ndarray:
     return np.tanh(audio * 1.4).astype(np.float32)
 
 
-model, utils = torch.hub.load(
-    repo_or_dir='snakers4/silero-vad',
-    model='silero_vad',
-    trust_repo=True
-)
+def get_vad_model():
+    global _vad_model
+    if _vad_model is None:
+        import torch
 
-(get_speech_timestamps,
- save_audio,
- read_audio,
- VADIterator,
- collect_chunks) = utils
+        model, _ = torch.hub.load(
+            repo_or_dir="snakers4/silero-vad",
+            model="silero_vad",
+            trust_repo=True,
+        )
+        _vad_model = model
+    return _vad_model
+
 
 def record_user_speech(
-    vad_model=model,
-    sample_rate: int = 16000,
+    vad_model=None,
+    sample_rate: int = config_samplerate,
     block_size: int = 512,
 
     calibration_seconds: float = 1.0,
@@ -59,6 +61,11 @@ def record_user_speech(
     Returns:
         np.ndarray audio, or None if no real speech was detected.
     """
+
+    if vad_model is None:
+        vad_model = get_vad_model()
+
+    import torch
 
     print("Calibrating noise...")
 

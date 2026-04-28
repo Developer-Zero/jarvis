@@ -1,5 +1,6 @@
 from config import tts_mode, tts_model
 
+import os
 import tempfile
 import edge_tts
 import asyncio
@@ -11,12 +12,12 @@ tts_queue = queue.Queue()
 
 def _tts(text):
     async def _run():
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-            filename = f.name
-            pitch = "-13Hz"
-            rate = "+1%"
-            communicate = edge_tts.Communicate(text=text, voice=tts_model, rate=rate, pitch=pitch)
-            await communicate.save(filename)
+        fd, filename = tempfile.mkstemp(suffix=".mp3")
+        os.close(fd)
+        pitch = "-13Hz"
+        rate = "+1%"
+        communicate = edge_tts.Communicate(text=text, voice=tts_model, rate=rate, pitch=pitch)
+        await communicate.save(filename)
         return filename
     filename = asyncio.run(_run())
     return filename
@@ -24,11 +25,22 @@ def _tts(text):
 def worker():
     while True:
         text = tts_queue.get()
-        if text is None:
-            break
-        filename = _tts(text)
-        playsound(filename)
-        tts_queue.task_done()
+        filename = None
+        try:
+            if text is None:
+                break
+
+            filename = _tts(text)
+            playsound(filename)
+        except Exception as e:
+            print(f"TTS error: {e}")
+        finally:
+            if filename:
+                try:
+                    os.remove(filename)
+                except FileNotFoundError:
+                    pass
+            tts_queue.task_done()
 
 thread = threading.Thread(target=worker, daemon=True)
 thread.start()
@@ -42,10 +54,14 @@ def wait_for_tts():
     tts_queue.join()
 
 
+def stop_tts_worker():
+    if thread.is_alive():
+        tts_queue.put(None)
+
+
 # II api keys: 
 code = """
-    voice_id = "M336tBVZHWWiWb4R54ui"
-    II_api_key = "sk_bb4beba0668dc9fdfe582f2dfcf16b10674f11bb6bc243c1"
+    voice_id = "M336tBVZHWWiWb4R54ui" # Jarvis voice
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     headers = { "xi-api-key": II_api_key, "Content-Type": "application/json" } 
     payload = {

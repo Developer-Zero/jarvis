@@ -1,0 +1,12 @@
+edge-tts
+numpy
+openai
+openpyxl
+openwakeword
+playsound
+pyaudio
+python-docx
+python-pptx
+sounddevice
+soundfile
+torch

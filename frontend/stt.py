@@ -2,22 +2,31 @@ from config import samplerate, stt_language, stt_mode, stt_model
 
 if stt_mode == "openai":
     from openai import OpenAI
+    import os
     import tempfile
     import soundfile as sf
 
     client = OpenAI()
 
     def transcribe(audio_np):
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            sf.write(f.name, audio_np, samplerate)
+        fd, filename = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
 
-            with open(f.name, "rb") as audio_file:
+        try:
+            sf.write(filename, audio_np, samplerate)
+
+            with open(filename, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model=stt_model,
                     file=audio_file,
                     language=stt_language
                 )
-        return transcript.text
+            return transcript.text
+        finally:
+            try:
+                os.remove(filename)
+            except FileNotFoundError:
+                pass
 
 
 elif stt_mode == "whisper":

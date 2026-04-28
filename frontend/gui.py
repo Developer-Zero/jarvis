@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import scrolledtext
 import time
 import threading
+import queue
 from datetime import datetime
 
 # Global state and timing
@@ -36,6 +37,26 @@ MUTED_COLORS = {
 }
 
 current_colors = NORMAL_COLORS.copy()
+_MAIN_THREAD_ID = threading.get_ident()
+_ui_queue = queue.Queue()
+
+
+def _run_or_queue(callback, *args):
+    if threading.get_ident() == _MAIN_THREAD_ID:
+        callback(*args)
+    else:
+        _ui_queue.put((callback, args))
+
+
+def _drain_ui_queue():
+    while True:
+        try:
+            callback, args = _ui_queue.get_nowait()
+        except queue.Empty:
+            break
+        callback(*args)
+
+    root.after(30, _drain_ui_queue)
 
 def __init__():
     """Initialize the GUI"""
@@ -320,13 +341,25 @@ def animate_idle():
     breathe()
 
 def animate_text(label, text, delay=0.02):
+    if threading.get_ident() != _MAIN_THREAD_ID:
+        _run_or_queue(animate_text, label, text, delay)
+        return
+
     label.config(text="")
-    for char in text:
-        label.config(text=label.cget("text") + char)
-        time.sleep(delay)
-        root.update()
+
+    def type_char(index=0):
+        if index >= len(text):
+            return
+        label.config(text=label.cget("text") + text[index])
+        root.after(max(1, int(delay * 1000)), type_char, index + 1)
+
+    type_char()
 
 def set_state(new_state):
+    if threading.get_ident() != _MAIN_THREAD_ID:
+        _run_or_queue(set_state, new_state)
+        return
+
     global state, state_change_time, listening_start_time, thinking_start_time
     state = new_state
     state_change_time = time.time()
@@ -345,30 +378,32 @@ def set_state(new_state):
         animate_thinking()
     elif new_state == "talking":
         animate_talking()
-    root.update()
 
 def send_message(sender, text):
-    def _run(sender, text):
-        """Add a message to the chat box with color coding and animation"""
-        chat_box.config(state=tk.NORMAL)
-        
-        # Add sender name with color
-        sender_tag = sender.lower() if sender.lower() in ["jarvis", "user", "system"] else "System"
-        chat_box.insert(tk.END, f"{sender}: ", sender_tag)
-        
-        # Add message text character by character (appearing animation)
-        text_tag = f"{sender.lower()}_text"
-        for char in text:
-            chat_box.insert(tk.END, char, text_tag)
+    if threading.get_ident() != _MAIN_THREAD_ID:
+        _run_or_queue(send_message, sender, text)
+        return
+
+    """Add a message to the chat box with color coding and animation"""
+    chat_box.config(state=tk.NORMAL)
+
+    sender_tag = sender.lower() if sender.lower() in ["jarvis", "user", "system"] else "System"
+    chat_box.insert(tk.END, f"{sender}: ", sender_tag)
+
+    text_tag = f"{sender.lower()}_text"
+
+    def type_char(index=0):
+        if index < len(text):
+            chat_box.insert(tk.END, text[index], text_tag)
             chat_box.see(tk.END)
-            chat_box.update()
-            time.sleep(0.01)
-        
+            root.after(10, type_char, index + 1)
+            return
+
         chat_box.insert(tk.END, "\n")
         chat_box.see(tk.END)
         chat_box.config(state=tk.DISABLED)
-        root.update()
-    threading.Thread(target=_run, args=(sender, text), daemon=True).start()
+
+    type_char()
 
 def toggle_mute():
     """Toggle muted mode with theme animation"""
@@ -422,6 +457,7 @@ def update_mute_indicator():
         root.mute_indicator.config(text="", fg=current_colors["primary"])
 
 # Start the timer and clock updates
+_drain_ui_queue()
 update_timer()
 update_clock()
 

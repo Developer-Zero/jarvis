@@ -2,21 +2,70 @@ import os
 import time
 import ctypes
 import webbrowser
+from pathlib import Path
+from urllib.parse import urlparse
 
 from backend.tools.base import Tool, ToolResult
 
+BLOCKED_EXECUTABLE_EXTENSIONS = {
+    ".bat",
+    ".cmd",
+    ".com",
+    ".exe",
+    ".jar",
+    ".js",
+    ".lnk",
+    ".msi",
+    ".ps1",
+    ".scr",
+    ".vbs",
+}
+
+
+def _validate_url(url: str) -> ToolResult | None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ToolResult(
+            status="error",
+            error="Only absolute http and https URLs can be opened",
+        )
+    return None
+
+
+def _validate_openable_file(path: str) -> tuple[Path | None, ToolResult | None]:
+    try:
+        resolved = Path(path).expanduser().resolve(strict=True)
+    except OSError:
+        return None, ToolResult(status="error", error="File path does not exist")
+
+    if not resolved.is_file():
+        return None, ToolResult(status="error", error="Path is not a file")
+
+    if resolved.suffix.lower() in BLOCKED_EXECUTABLE_EXTENSIONS:
+        return None, ToolResult(
+            status="error",
+            error="Opening executable or script files is blocked",
+        )
+
+    return resolved, None
+
 
 def open_url(url: str) -> ToolResult:
+    error = _validate_url(url)
+    if error:
+        return error
+
     webbrowser.open(url)
     return ToolResult(status="ok", content=f"Opened URL: {url}")
 
 
 def open_file(path: str) -> ToolResult:
-    if not os.path.exists(path):
-        return ToolResult(status="error", error="File path does not exist")
+    resolved, error = _validate_openable_file(path)
+    if error:
+        return error
 
-    os.startfile(path)
-    return ToolResult(status="ok", content=f"Opened file: {path}")
+    os.startfile(str(resolved))
+    return ToolResult(status="ok", content=f"Opened file: {resolved}")
 
 
 def press_key(key: int) -> None:

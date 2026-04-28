@@ -126,7 +126,7 @@ class Agent:
             if steps == self.max_steps - 1:
                 self.messages.append({"role": "system", "content": "You must give a final answer now. No tool calls allowed."})
             elif steps >= self.max_steps:
-                return "Hiba: Lépések száma túllépte a maximális számot"
+                return "Hiba: Túl sok lépés"
 
             print(f"Asking model | Messages: {self.messages}")
             try:
