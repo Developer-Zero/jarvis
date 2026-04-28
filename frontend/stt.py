@@ -1,4 +1,5 @@
-from config import samplerate, stt_language, stt_mode, stt_model
+from config import stt_language, stt_mode, stt_model
+samplerate = 16000
 
 if stt_mode == "openai":
     from openai import OpenAI

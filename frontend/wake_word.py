@@ -1,6 +1,8 @@
 import numpy as np
 
-from config import block_size, samplerate, wake_word_model, wake_word_threshold
+from config import wake_word_model, wake_word_threshold
+samplerate = 16000
+block_size = 1024
 
 
 class WakeWordDetector:

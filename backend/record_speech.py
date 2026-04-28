@@ -4,9 +4,11 @@ from collections import deque
 import numpy as np
 import sounddevice as sd
 
-from config import samplerate as config_samplerate
+from config import calibration_seconds, no_speech_timeout, max_record_seconds, min_speech_seconds, silence_after_speech, start_vad_threshold, stop_vad_threshold, start_energy_multiplier, stop_energy_multiplier, speech_start_frames, speech_stop_frames, prebuffer_seconds
+
 
 block_size = 512
+samplerate = 16000
 _vad_model = None
 
 
@@ -36,27 +38,27 @@ def get_vad_model():
 
 def record_user_speech(
     vad_model=None,
-    sample_rate: int = config_samplerate,
-    block_size: int = 512,
+    sample_rate: int = samplerate,
+    block_size: int = block_size,
     should_stop=None,
 
-    calibration_seconds: float = 1.0,
-    no_speech_timeout: float = 4.0,
-    max_record_seconds: float = 15.0,
+    calibration_seconds: float = calibration_seconds,
+    no_speech_timeout: float = no_speech_timeout,
+    max_record_seconds: float = max_record_seconds,
 
-    min_speech_seconds: float = 0.35,
-    silence_after_speech: float = 0.9,
+    min_speech_seconds: float = min_speech_seconds,
+    silence_after_speech: float = silence_after_speech,
 
-    start_vad_threshold: float = 0.52,
-    stop_vad_threshold: float = 0.38,
+    start_vad_threshold: float = start_vad_threshold,
+    stop_vad_threshold: float = stop_vad_threshold,
 
-    start_energy_multiplier: float = 2.0,
-    stop_energy_multiplier: float = 1.45,
+    start_energy_multiplier: float = start_energy_multiplier,
+    stop_energy_multiplier: float = stop_energy_multiplier,
 
-    speech_start_frames: int = 2,
-    speech_stop_frames: int = 10,
+    speech_start_frames: int = speech_start_frames,
+    speech_stop_frames: int = speech_stop_frames,
 
-    prebuffer_seconds: float = 0.8,
+    prebuffer_seconds: float = prebuffer_seconds,
 ):
     """
     Returns:
