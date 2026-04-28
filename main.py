@@ -5,15 +5,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
-# Tools
 import atexit
-import shutil
-import tempfile
 import threading
 import time
-
-# Frontend tools
-from playsound import playsound
 
 # Other files
 from frontend.wake_word import WakeWordDetector
@@ -21,12 +15,10 @@ from backend.record_speech import record_user_speech
 from frontend.stt import transcribe
 from backend.agent import ask_agent
 from backend.audio_ducking import restore as restore_audio_ducking
+from backend.sounds import START_SOUND, WAKE_SOUND, play_sound, play_sound_async
 import frontend.gui as gui
 from frontend.hotkeys import start_global_hotkeys
 from frontend.tts import cancel_tts, queue_tts, wait_for_tts, stop_tts_worker
-
-WAKE_SOUND = BASE_DIR / "Assets" / "audio" / "wake.mp3"
-WAKE_SOUND_CACHE = Path(tempfile.gettempdir()) / "jarvis_wake.mp3"
 
 atexit.register(stop_tts_worker)
 atexit.register(restore_audio_ducking)
@@ -44,20 +36,7 @@ def watch_mute_cancellations() -> None:
 
 
 def play_wake_sound() -> None:
-    if not WAKE_SOUND.exists():
-        print(f"Wake sound not found: {WAKE_SOUND}")
-        return
-
-    try:
-        if (
-            not WAKE_SOUND_CACHE.exists()
-            or WAKE_SOUND_CACHE.stat().st_size != WAKE_SOUND.stat().st_size
-        ):
-            shutil.copyfile(WAKE_SOUND, WAKE_SOUND_CACHE)
-
-        playsound(str(WAKE_SOUND_CACHE))
-    except Exception as e:
-        print(f"Wake sound playback failed: {e}")
+    play_sound(WAKE_SOUND, "Wake sound")
 
 
 def listen_for_wake_word() -> bool:
@@ -148,6 +127,7 @@ def main() -> None:
 if __name__ == "__main__":
     gui.set_text_command(agent)
     start_global_hotkeys(gui.toggle_mute)
+    play_sound_async(START_SOUND, "Start sound")
     threading.Thread(target=watch_mute_cancellations, daemon=True).start()
     threading.Thread(target=main, daemon=True).start()
     gui.root.mainloop()

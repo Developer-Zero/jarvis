@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import psutil
 from config import ducking_default
+from backend.sounds import MUTE_SOUND, UNMUTE_SOUND, play_sound_async
 
 try:
     import ctypes
@@ -340,7 +341,7 @@ class JarvisGui:
         self._mute_canvas.delete("all")
         border = C_MUTED if self.muted else C_MID
         fill = "#1a0008" if self.muted else C_PANEL
-        label = "MUTED" if self.muted else "LIVE"
+        label = "OFFLINE" if self.muted else "ONLINE"
         fg = C_MUTED if self.muted else C_GREEN
         self._mute_canvas.create_rectangle(0, 0, 110, 32, outline=border, fill=fill, width=1)
         self._mute_canvas.create_text(
@@ -356,7 +357,7 @@ class JarvisGui:
         border = C_ACC2 if self.audio_ducking_enabled else C_MID
         fill = "#0f0b22" if self.audio_ducking_enabled else C_PANEL
         label = "DUCK ON" if self.audio_ducking_enabled else "DUCK OFF"
-        fg = C_ACC2 if self.audio_ducking_enabled else C_DIM
+        fg = C_ACC2 if self.audio_ducking_enabled else C_PRI
         self._ducking_canvas.create_rectangle(0, 0, 110, 32, outline=border, fill=fill, width=1)
         self._ducking_canvas.create_text(
             55,
@@ -616,9 +617,11 @@ class JarvisGui:
         is_muted = self.muted
         self._draw_mute_button()
         if self.muted:
+            play_sound_async(MUTE_SOUND, "Mute sound")
             self.set_state("muted")
             self.send_message("System", "Muted")
         else:
+            play_sound_async(UNMUTE_SOUND, "Unmute sound")
             self.set_state("idle")
             self.send_message("System", "Unmuted")
 
@@ -843,7 +846,7 @@ class JarvisGui:
         y = self.FCY + self.FACE_SZ // 2 + 45
 
         if self.muted:
-            status = "MUTED"
+            status = "OFFLINE"
             color = C_MUTED
         elif self.speaking:
             status = "SPEAKING"
@@ -913,7 +916,7 @@ class JarvisGui:
 
         for name, color, row_y in rows:
             value = self.metrics[name]
-            label = "N/A" if value is None else f"{value:05.1f}%"
+            label = "N/A" if value is None else f"{value:.0f}%"
             c.create_text(
                 x + 14,
                 row_y,
@@ -962,7 +965,7 @@ class JarvisGui:
         c.create_line(*points, fill=color if value is not None else C_DIM, width=2, smooth=True)
         if value is not None:
             fill_h = (max(0.0, min(100.0, value)) / 100.0) * h
-            c.create_rectangle(x, y + h - fill_h, x + 4, y + h, fill=color, outline="")
+            c.create_rectangle(x + w, y + h - fill_h, x + w - 1, y + h, fill=color, outline="")
 
     def _draw_footer(self, c):
         c.create_rectangle(0, self.H - 28, self.W, self.H, fill="#00080d", outline="")

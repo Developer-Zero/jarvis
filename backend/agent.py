@@ -69,7 +69,7 @@ class Agent:
         if ttt_mode == "openai":
             from openai import OpenAI
             self.client = OpenAI()
-    
+
     def get_safe_history(self):
         history = self.messages[-self.max_history:]
 
