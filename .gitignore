@@ -13,8 +13,6 @@ env/
 temp/
 tmp/
 *.tmp
-*.wav
-*.mp3
 *.jsonl
 .DS_Store
 Thumbs.db
