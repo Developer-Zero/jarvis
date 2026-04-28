@@ -7,7 +7,9 @@ import time
 import tkinter as tk
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 import psutil
+from config import ducking_default
 
 try:
     import ctypes
@@ -19,6 +21,8 @@ except ImportError:
 
 SYSTEM_NAME = "J.A.R.V.I.S"
 MODEL_BADGE = "Version 0.1"
+BASE_DIR = Path(__file__).resolve().parents[1]
+APP_ICON = BASE_DIR / "Assets" / "sprites" / "icon.png"
 
 C_BG = "#000000"
 C_PRI = "#00d4ff"
@@ -39,6 +43,7 @@ _ui_queue = queue.Queue()
 state = "idle"
 state_change_time = time.time()
 is_muted = False
+audio_ducking_enabled = bool(ducking_default)
 
 
 class WindowsCpuMeter:
@@ -131,6 +136,7 @@ class JarvisGui:
         self.root = tk.Tk()
         self.root.title("J.A.R.V.I.S")
         self.root.resizable(False, False)
+        self._set_app_icon()
 
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
@@ -149,6 +155,7 @@ class JarvisGui:
         self.state_change_time = time.time()
         self.speaking = False
         self.muted = False
+        self.audio_ducking_enabled = bool(ducking_default)
         self.scale = 1.0
         self.target_scale = 1.0
         self.halo_a = 60.0
@@ -165,6 +172,8 @@ class JarvisGui:
         self.is_typing = False
         self.on_text_command = None
         self.monitor_open = False
+        self._ducking_refresh_job = None
+        self._ducking_tooltip = None
         self.metrics = {"CPU": None, "RAM": None, "GPU": None}
         self.metric_history = {
             "CPU": deque([0.0] * 42, maxlen=42),
@@ -185,13 +194,26 @@ class JarvisGui:
         self._build_log()
         self._build_input_bar()
         self._build_mute_button()
+        self._build_audio_ducking_button()
         self._build_monitor_button()
+        self._apply_audio_ducking_enabled()
 
         self.root.bind("<F6>", lambda _event: self.toggle_mute())
         self.root.bind("<Control-m>", lambda _event: self.toggle_mute())
 
         self._sample_metrics()
         self._animate()
+
+    def _set_app_icon(self):
+        if not APP_ICON.exists():
+            print(f"App icon not found: {APP_ICON}")
+            return
+
+        try:
+            self._icon_image = tk.PhotoImage(file=str(APP_ICON))
+            self.root.iconphoto(True, self._icon_image)
+        except Exception as exc:
+            print(f"App icon failed to load: {exc}")
 
     @staticmethod
     def _ac(r, g, b, a):
@@ -302,6 +324,21 @@ class JarvisGui:
         self._monitor_canvas.bind("<Button-1>", lambda _event: self.toggle_monitor())
         self._draw_monitor_button()
 
+    def _build_audio_ducking_button(self):
+        self._ducking_canvas = tk.Canvas(
+            self.root,
+            width=110,
+            height=32,
+            bg=C_BG,
+            highlightthickness=0,
+            cursor="hand2",
+        )
+        self._ducking_canvas.place(x=self.W - 128, y=76)
+        self._ducking_canvas.bind("<Button-1>", lambda _event: self.toggle_audio_ducking())
+        self._ducking_canvas.bind("<Enter>", self._show_audio_ducking_tooltip)
+        self._ducking_canvas.bind("<Leave>", self._hide_audio_ducking_tooltip)
+        self._draw_audio_ducking_button()
+
     def _draw_mute_button(self):
         self._mute_canvas.delete("all")
         border = C_MUTED if self.muted else C_MID
@@ -316,6 +353,51 @@ class JarvisGui:
             fill=fg,
             font=("Consolas", 10, "bold"),
         )
+
+    def _draw_audio_ducking_button(self):
+        self._ducking_canvas.delete("all")
+        border = C_ACC2 if self.audio_ducking_enabled else C_MID
+        fill = "#1a1400" if self.audio_ducking_enabled else C_PANEL
+        label = "DUCK ON" if self.audio_ducking_enabled else "DUCK OFF"
+        fg = C_ACC2 if self.audio_ducking_enabled else C_DIM
+        self._ducking_canvas.create_rectangle(0, 0, 110, 32, outline=border, fill=fill, width=1)
+        self._ducking_canvas.create_text(
+            55,
+            16,
+            text=label,
+            fill=fg,
+            font=("Consolas", 10, "bold"),
+        )
+
+    def _show_audio_ducking_tooltip(self, event=None):
+        self._hide_audio_ducking_tooltip()
+
+        self._ducking_tooltip = tk.Toplevel(self.root)
+        self._ducking_tooltip.wm_overrideredirect(True)
+        self._ducking_tooltip.configure(bg=C_PRI)
+
+        label = tk.Label(
+            self._ducking_tooltip,
+            text="Lowers other apps while listening",
+            fg=C_TEXT,
+            bg=C_PANEL,
+            font=("Consolas", 9),
+            padx=8,
+            pady=4,
+            borderwidth=0,
+        )
+        label.pack()
+
+        x = self.root.winfo_rootx() + self.W - 286
+        y = self.root.winfo_rooty() + 112
+        self._ducking_tooltip.wm_geometry(f"+{x}+{y}")
+
+    def _hide_audio_ducking_tooltip(self, event=None):
+        if self._ducking_tooltip is None:
+            return
+
+        self._ducking_tooltip.destroy()
+        self._ducking_tooltip = None
 
     def _draw_monitor_button(self):
         self._monitor_canvas.delete("all")
@@ -334,6 +416,27 @@ class JarvisGui:
     def toggle_monitor(self):
         self.monitor_open = not self.monitor_open
         self._draw_monitor_button()
+
+    def toggle_audio_ducking(self):
+        self.audio_ducking_enabled = not self.audio_ducking_enabled
+        self._draw_audio_ducking_button()
+        self._apply_audio_ducking_enabled()
+
+        status = "enabled" if self.audio_ducking_enabled else "disabled"
+        self.send_message("System", f"Listening audio ducking {status}.")
+
+    def _apply_audio_ducking_enabled(self):
+        global audio_ducking_enabled
+
+        audio_ducking_enabled = self.audio_ducking_enabled
+        try:
+            from backend.audio_ducking import set_enabled
+
+            set_enabled(self.audio_ducking_enabled, self.state == "listening")
+        except Exception as exc:
+            print(f"Audio ducking toggle failed: {exc}")
+
+        self._sync_audio_ducking_refresh()
 
     def _sample_metrics(self):
         cpu = self._get_cpu_percent()
@@ -436,6 +539,37 @@ class JarvisGui:
             self.status_text = str(new_state).upper()
             self.speaking = False
 
+        try:
+            from backend.audio_ducking import set_listening
+
+            set_listening(new_state == "listening")
+        except Exception as exc:
+            print(f"Audio ducking state sync failed: {exc}")
+
+        self._sync_audio_ducking_refresh()
+
+    def _sync_audio_ducking_refresh(self):
+        should_refresh = self.audio_ducking_enabled and self.state == "listening"
+        if should_refresh and self._ducking_refresh_job is None:
+            self._ducking_refresh_job = self.root.after(750, self._refresh_audio_ducking)
+        elif not should_refresh and self._ducking_refresh_job is not None:
+            self.root.after_cancel(self._ducking_refresh_job)
+            self._ducking_refresh_job = None
+
+    def _refresh_audio_ducking(self):
+        self._ducking_refresh_job = None
+        if not self.audio_ducking_enabled or self.state != "listening":
+            return
+
+        try:
+            from backend.audio_ducking import set_listening
+
+            set_listening(True)
+        except Exception as exc:
+            print(f"Audio ducking refresh failed: {exc}")
+
+        self._sync_audio_ducking_refresh()
+
     def send_message(self, sender, text):
         sender_lookup = {
             "jarvis": "Jarvis",
@@ -488,7 +622,7 @@ class JarvisGui:
             self.set_state("muted")
             self.send_message("System", "Microphone muted.")
         else:
-            self.set_state("listening")
+            self.set_state("idle")
             self.send_message("System", "Microphone active.")
 
     def _animate(self):
@@ -886,6 +1020,20 @@ def toggle_mute():
     global is_muted
     _gui.toggle_mute()
     is_muted = _gui.muted
+
+
+def toggle_audio_ducking():
+    if threading.get_ident() != _MAIN_THREAD_ID:
+        _run_or_queue(toggle_audio_ducking)
+        return
+
+    global audio_ducking_enabled
+    _gui.toggle_audio_ducking()
+    audio_ducking_enabled = _gui.audio_ducking_enabled
+
+
+def get_audio_ducking_enabled():
+    return audio_ducking_enabled
 
 
 def set_text_command(callback):

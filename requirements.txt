@@ -11,3 +11,5 @@ sounddevice
 soundfile
 torch
 psutil
+pycaw
+comtypes

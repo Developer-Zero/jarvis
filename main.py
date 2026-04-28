@@ -20,6 +20,7 @@ from frontend.wake_word import WakeWordDetector
 from backend.record_speech import record_user_speech
 from frontend.stt import transcribe
 from backend.agent import ask_agent
+from backend.audio_ducking import restore as restore_audio_ducking
 import frontend.gui as gui
 from frontend.tts import queue_tts, wait_for_tts, stop_tts_worker
 
@@ -27,6 +28,7 @@ WAKE_SOUND = BASE_DIR / "Assets" / "audio" / "wake.mp3"
 WAKE_SOUND_CACHE = Path(tempfile.gettempdir()) / "jarvis_wake.mp3"
 
 atexit.register(stop_tts_worker)
+atexit.register(restore_audio_ducking)
 
 
 def play_wake_sound() -> None:
