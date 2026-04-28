@@ -22,13 +22,25 @@ from frontend.stt import transcribe
 from backend.agent import ask_agent
 from backend.audio_ducking import restore as restore_audio_ducking
 import frontend.gui as gui
-from frontend.tts import queue_tts, wait_for_tts, stop_tts_worker
+from frontend.hotkeys import start_global_hotkeys
+from frontend.tts import cancel_tts, queue_tts, wait_for_tts, stop_tts_worker
 
 WAKE_SOUND = BASE_DIR / "Assets" / "audio" / "wake.mp3"
 WAKE_SOUND_CACHE = Path(tempfile.gettempdir()) / "jarvis_wake.mp3"
 
 atexit.register(stop_tts_worker)
 atexit.register(restore_audio_ducking)
+
+
+def watch_mute_cancellations() -> None:
+    was_muted = gui.get_muted()
+
+    while True:
+        is_muted = gui.get_muted()
+        if is_muted and not was_muted:
+            cancel_tts()
+        was_muted = is_muted
+        time.sleep(0.05)
 
 
 def play_wake_sound() -> None:
@@ -73,9 +85,17 @@ def record_speech() -> str | None:
     gui.set_state("listening")
     audio_np = record_user_speech(should_stop=gui.get_muted)
     if audio_np is not None:
+        if gui.get_muted():
+            gui.set_state("muted")
+            return None
+
         gui.set_state("thinking")
         print("Recording ended successfully: transcribing starting")
         text = transcribe(audio_np)
+        if gui.get_muted():
+            gui.set_state("muted")
+            return None
+
         if not text.strip():
             print("Transcription ended with no text: returning to sleep mode")
             return None
@@ -89,13 +109,19 @@ def record_speech() -> str | None:
 
 def agent(user_input: str) -> None:
     try:
-        gui.set_state("talking")
         gui.send_message("User", user_input)
+        gui.set_state("thinking")
 
         response = ask_agent(user_input)
+        if gui.get_muted():
+            return
 
         if response:
             gui.send_message("Jarvis", response)
+            if gui.get_muted():
+                cancel_tts()
+                return
+
             queue_tts(response)
             wait_for_tts()
     finally:
@@ -121,5 +147,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     gui.set_text_command(agent)
+    start_global_hotkeys(gui.toggle_mute)
+    threading.Thread(target=watch_mute_cancellations, daemon=True).start()
     threading.Thread(target=main, daemon=True).start()
     gui.root.mainloop()

@@ -3,7 +3,6 @@ import time
 import threading
 
 
-#from backend.robusts import formatJson # Fixing json with robusting
 from config import ttt_language, ttt_mode, ttt_model, max_message_history, max_query_length, max_steps
 from backend.tools.registry import build_default_registry, tool_result_for_model
 

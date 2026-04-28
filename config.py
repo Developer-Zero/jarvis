@@ -53,10 +53,13 @@ ttt_language = language # *
 
 
 # Agent
-max_message_history = 10 # * Amount of messages the agent can remember at a time
-max_query_length = 800 # * Amount of characters a tool can return
+max_message_history = 10 # Amount of messages the agent can remember at a time, bigger = more expensive
+max_query_length = 1000 # Amount of characters a tool can return - example: how many characters can the model retrive from a website
 max_steps = 5 # * How many steps and retries can a more complicated plan have
 
 # Ducking
 duck_percentage = 0.4 # Volume multiplier for other apps when Jarvis is listening and ducking is on. full mute 0.0-1.0 no ducking
 ducking_default = False # If the ducking should be on by default when the program starts
+
+# Muting
+vk_mute = 0x75 # Virtual key code for mute toggle

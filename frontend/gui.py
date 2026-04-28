@@ -29,8 +29,8 @@ C_PRI = "#00d4ff"
 C_MID = "#007a99"
 C_DIM = "#003344"
 C_DIMMER = "#001520"
-C_ACC = "#ff6600"
-C_ACC2 = "#ffcc00"
+C_ACC = "#ff4fa3"
+C_ACC2 = "#8b7cff"
 C_TEXT = "#8ffcff"
 C_PANEL = "#010c10"
 C_GREEN = "#00ff88"
@@ -198,9 +198,6 @@ class JarvisGui:
         self._build_monitor_button()
         self._apply_audio_ducking_enabled()
 
-        self.root.bind("<F6>", lambda _event: self.toggle_mute())
-        self.root.bind("<Control-m>", lambda _event: self.toggle_mute())
-
         self._sample_metrics()
         self._animate()
 
@@ -357,7 +354,7 @@ class JarvisGui:
     def _draw_audio_ducking_button(self):
         self._ducking_canvas.delete("all")
         border = C_ACC2 if self.audio_ducking_enabled else C_MID
-        fill = "#1a1400" if self.audio_ducking_enabled else C_PANEL
+        fill = "#0f0b22" if self.audio_ducking_enabled else C_PANEL
         label = "DUCK ON" if self.audio_ducking_enabled else "DUCK OFF"
         fg = C_ACC2 if self.audio_ducking_enabled else C_DIM
         self._ducking_canvas.create_rectangle(0, 0, 110, 32, outline=border, fill=fill, width=1)
@@ -423,7 +420,7 @@ class JarvisGui:
         self._apply_audio_ducking_enabled()
 
         status = "enabled" if self.audio_ducking_enabled else "disabled"
-        self.send_message("System", f"Listening audio ducking {status}.")
+        self.send_message("System", f"Ducking {status}")
 
     def _apply_audio_ducking_enabled(self):
         global audio_ducking_enabled
@@ -620,10 +617,10 @@ class JarvisGui:
         self._draw_mute_button()
         if self.muted:
             self.set_state("muted")
-            self.send_message("System", "Microphone muted.")
+            self.send_message("System", "Muted")
         else:
             self.set_state("idle")
-            self.send_message("System", "Microphone active.")
+            self.send_message("System", "Unmuted")
 
     def _animate(self):
         self.tick += 1
