@@ -830,6 +830,7 @@ class JarvisGui:
         if not text:
             return
         self._input_var.set("")
+        self.set_state("thinking")
         if self.on_text_command:
             threading.Thread(target=self.on_text_command, args=(text,), daemon=True).start()
         else:

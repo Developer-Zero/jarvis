@@ -5,11 +5,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from userdata import update_setup_status
+RUNTIME_DIR = Path(__file__).resolve().parent
+BASE_DIR = RUNTIME_DIR.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from runtime.userdata import update_setup_status
 
 
-BASE_DIR = Path(__file__).resolve().parent
-REQUIREMENTS_PATH = BASE_DIR / "requirements.txt"
+REQUIREMENTS_PATH = RUNTIME_DIR / "requirements.txt"
 
 
 def _python_for_pip() -> str:
@@ -64,7 +68,7 @@ def run_setup() -> dict[str, object]:
         completed=success,
         result=status,
         error=error,
-        requirements_file=REQUIREMENTS_PATH.name,
+        requirements_file=str(REQUIREMENTS_PATH.relative_to(BASE_DIR)),
     )
     return result
 

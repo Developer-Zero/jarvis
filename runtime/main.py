@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+RUNTIME_DIR = Path(__file__).resolve().parent
+BASE_DIR = RUNTIME_DIR.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from bootstrap import bootstrap_application
+from runtime.bootstrap import bootstrap_application
 
 bootstrap_application()
 

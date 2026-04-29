@@ -1,5 +1,5 @@
 from config import stt_language, stt_mode, stt_model
-from userdata import get_openai_api_key
+from runtime.userdata import get_openai_api_key
 
 samplerate = 16000
 

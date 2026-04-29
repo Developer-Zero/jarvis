@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from setup import run_setup
-from userdata import ensure_userdata, register_launch
+from runtime.setup import run_setup
+from runtime.userdata import ensure_userdata, register_launch
 
 
 def _show_setup_error(message: str) -> None:
@@ -22,11 +22,11 @@ def bootstrap_application() -> None:
     setup_data = data.get("setup", {})
 
     if not setup_data.get("completed"):
-        print("First launch detected. Running setup.py...")
+        print("First launch detected. Running runtime/setup.py...")
         result = run_setup()
         if not result.get("success"):
             error = result.get("error") or "Unknown setup error"
             _show_setup_error(f"Setup failed: {error}")
             raise RuntimeError(f"Setup failed: {error}")
 
-    register_launch("main.py")
+    register_launch("runtime/main.py")

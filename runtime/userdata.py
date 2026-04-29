@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any
 
 
-BASE_DIR = Path(__file__).resolve().parent
-USERDATA_PATH = BASE_DIR / "userdata.json"
+RUNTIME_DIR = Path(__file__).resolve().parent
+BASE_DIR = RUNTIME_DIR.parent
+USERDATA_PATH = RUNTIME_DIR / "userdata.json"
 
 
 def _now() -> str:
@@ -31,7 +32,7 @@ DEFAULT_USERDATA: dict[str, Any] = {
     "setup": {
         "completed": False,
         "completed_at": "",
-        "requirements_file": "requirements.txt",
+        "requirements_file": "runtime/requirements.txt",
         "last_result": "",
         "last_error": "",
     },
@@ -101,7 +102,7 @@ def update_setup_status(
     completed: bool,
     result: str,
     error: str = "",
-    requirements_file: str = "requirements.txt",
+    requirements_file: str = "runtime/requirements.txt",
 ) -> dict[str, Any]:
     data = ensure_userdata()
     data["setup"]["completed"] = bool(completed)

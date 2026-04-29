@@ -5,7 +5,7 @@ import threading
 
 from config import ttt_language, ttt_mode, ttt_model, max_message_history, max_query_length, max_steps
 from backend.tools.registry import build_default_registry, tool_result_for_model
-from userdata import get_openai_api_key
+from runtime.userdata import get_openai_api_key
 
 SYSTEM_PROMPT = f"""
 You are a Jarvis-like AI execution agent.
@@ -107,8 +107,7 @@ class Agent:
                         model=ttt_model,
                         tools=self.tools,
                         tool_choice="auto",
-                        messages=([{"role": "system", "content": self.prompt}] + self.get_safe_history()),
-                        temperature=0.3
+                        messages=([{"role": "system", "content": self.prompt}] + self.get_safe_history())
                 )
                 return response
             except Exception as e:
@@ -162,6 +161,7 @@ class Agent:
             if message.tool_calls:
                 self.execute_commands(message.tool_calls)
             else:
+                print(f"Final answer given with {steps} steps")
                 return message.content
 
 

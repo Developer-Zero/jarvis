@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from userdata import (
+from runtime.userdata import (
     BASE_DIR,
     ensure_userdata,
     has_openai_api_key,
@@ -144,7 +144,7 @@ def _launcher_target() -> Path:
     exe_path = BASE_DIR / "Jarvis.exe"
     if exe_path.exists():
         return exe_path
-    return BASE_DIR / "main.py"
+    return BASE_DIR / "runtime" / "main.py"
 
 
 def _shortcut_icon_path(fallback: Path) -> Path:

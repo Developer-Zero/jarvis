@@ -37,7 +37,7 @@ stt_language = language # *
 # Text To Speech
 tts_mode = "edge" # * "edge", "elevenlabs", "pyttsx3", "openai" (only "edge" is tested, others may not work)
 tts_model = "hu-HU-TamasNeural"# * "edge": "hu-HU-TamasNeural" | "elevenlabs": "M336tBVZHWWiWb4R54ui" (Jarvis-like) | "pyttsx3": system voices | "openai": "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"
-tts_pitch = "-13Hz" # Deepness of voice. deeper -20Hz-+20Hz higher
+tts_pitch = "-15Hz" # Deepness of voice. deeper -20Hz-+20Hz higher
 tts_rate = "+1%" # Speed of voice. slower -20%-+20% faster
 
 # Text To Speech (ElevenLabs)
@@ -55,7 +55,7 @@ ttt_language = language # *
 # Agent
 max_message_history = 10 # Amount of messages the agent can remember at a time, bigger = more expensive
 max_query_length = 1000 # Amount of characters a tool can return - example: how many characters can the model retrive from a website
-max_steps = 5 # * How many steps and retries can a more complicated plan have
+max_steps = 7 # * How many steps and retries can a more complicated plan have
 
 # Ducking
 duck_percentage = 0.4 # Volume multiplier for other apps when Jarvis is listening and ducking is on. full mute 0.0-1.0 no ducking
