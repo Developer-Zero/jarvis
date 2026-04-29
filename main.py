@@ -1,24 +1,29 @@
 import sys
 from pathlib import Path
 
-# Add parent directory to path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
+
+from bootstrap import bootstrap_application
+
+bootstrap_application()
 
 import atexit
 import threading
 import time
 
-# Other files
-from frontend.wake_word import WakeWordDetector
-from backend.record_speech import record_user_speech
-from frontend.stt import transcribe
-from backend.agent import ask_agent
-from backend.audio_ducking import restore as restore_audio_ducking
-from backend.sounds import START_SOUND, WAKE_SOUND, play_sound, play_sound_async
 import frontend.gui as gui
+
+gui.run_startup_onboarding()
+
+from backend.agent import ask_agent
+from backend.audio.audio_ducking import restore as restore_audio_ducking
+from backend.audio.sounds import START_SOUND, WAKE_SOUND, play_sound, play_sound_async
+from backend.speech.record_speech import record_user_speech
+from backend.speech.stt import transcribe
+from backend.speech.wake_word import WakeWordDetector
 from frontend.hotkeys import start_global_hotkeys
-from frontend.tts import cancel_tts, queue_tts, wait_for_tts, stop_tts_worker
+from backend.speech.tts import cancel_tts, queue_tts, wait_for_tts, stop_tts_worker
 
 atexit.register(stop_tts_worker)
 atexit.register(restore_audio_ducking)

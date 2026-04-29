@@ -14,5 +14,9 @@ temp/
 tmp/
 *.tmp
 *.jsonl
+userdata.json
+dist/
+build/
+*.spec
 .DS_Store
 Thumbs.db

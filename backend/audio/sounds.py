@@ -6,7 +6,7 @@ from pathlib import Path
 from playsound import playsound
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 AUDIO_DIR = BASE_DIR / "Assets" / "audio"
 
 WAKE_SOUND = AUDIO_DIR / "wake.mp3"

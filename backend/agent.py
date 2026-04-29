@@ -5,6 +5,7 @@ import threading
 
 from config import ttt_language, ttt_mode, ttt_model, max_message_history, max_query_length, max_steps
 from backend.tools.registry import build_default_registry, tool_result_for_model
+from userdata import get_openai_api_key
 
 SYSTEM_PROMPT = f"""
 You are a Jarvis-like AI execution agent.
@@ -68,7 +69,8 @@ class Agent:
 
         if ttt_mode == "openai":
             from openai import OpenAI
-            self.client = OpenAI()
+            api_key = get_openai_api_key()
+            self.client = OpenAI(api_key=api_key) if api_key else OpenAI()
 
     def get_safe_history(self):
         history = self.messages[-self.max_history:]

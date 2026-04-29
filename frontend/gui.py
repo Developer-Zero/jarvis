@@ -10,7 +10,8 @@ from datetime import datetime
 from pathlib import Path
 import psutil
 from config import ducking_default
-from backend.sounds import MUTE_SOUND, UNMUTE_SOUND, play_sound_async
+from backend.audio.sounds import MUTE_SOUND, UNMUTE_SOUND, play_sound_async
+from frontend import onboarding
 
 try:
     import ctypes
@@ -175,6 +176,8 @@ class JarvisGui:
         self.monitor_open = False
         self._ducking_refresh_job = None
         self._ducking_tooltip = None
+        self._onboarding_overlay = None
+        self._onboarding_done_callback = None
         self.metrics = {"CPU": None, "RAM": None, "GPU": None}
         self.metric_history = {
             "CPU": deque([0.0] * 42, maxlen=42),
@@ -212,6 +215,248 @@ class JarvisGui:
             self.root.iconphoto(True, self._icon_image)
         except Exception as exc:
             print(f"App icon failed to load: {exc}")
+
+    def run_startup_onboarding(self):
+        if not onboarding.should_ask_for_desktop_shortcut() and not onboarding.needs_openai_api_key():
+            return
+
+        done = tk.BooleanVar(master=self.root, value=False)
+        self._onboarding_done_callback = lambda: done.set(True)
+        self._show_next_onboarding_step()
+        self.root.wait_variable(done)
+
+    def _show_next_onboarding_step(self):
+        self._clear_onboarding_overlay()
+
+        if onboarding.should_ask_for_desktop_shortcut():
+            self._show_shortcut_prompt()
+            return
+
+        if onboarding.needs_openai_api_key():
+            self._show_api_key_prompt()
+            return
+
+        if self._onboarding_done_callback:
+            self._onboarding_done_callback()
+
+    def _clear_onboarding_overlay(self):
+        if self._onboarding_overlay is None:
+            return
+
+        try:
+            self._onboarding_overlay.grab_release()
+        except tk.TclError:
+            pass
+        self._onboarding_overlay.destroy()
+        self._onboarding_overlay = None
+
+    def _build_onboarding_panel(self, title, body):
+        self._clear_onboarding_overlay()
+
+        overlay = tk.Frame(self.root, bg=C_BG)
+        overlay.place(x=0, y=0, width=self.W, height=self.H)
+        overlay.lift()
+        overlay.focus_set()
+        overlay.grab_set()
+        self._onboarding_overlay = overlay
+
+        panel_w = min(540, self.W - 64)
+        panel_h = 286
+        panel = tk.Frame(
+            overlay,
+            bg=C_PANEL,
+            highlightbackground=C_PRI,
+            highlightthickness=1,
+        )
+        panel.place(
+            x=(self.W - panel_w) // 2,
+            y=(self.H - panel_h) // 2,
+            width=panel_w,
+            height=panel_h,
+        )
+
+        accent = tk.Frame(panel, bg=C_PRI, height=2)
+        accent.pack(fill="x")
+
+        content = tk.Frame(panel, bg=C_PANEL, padx=22, pady=18)
+        content.pack(fill="both", expand=True)
+
+        tk.Label(
+            content,
+            text=title,
+            fg=C_PRI,
+            bg=C_PANEL,
+            font=("Consolas", 14, "bold"),
+        ).pack(anchor="w")
+
+        tk.Label(
+            content,
+            text=body,
+            fg=C_TEXT,
+            bg=C_PANEL,
+            font=("Consolas", 10),
+            justify="left",
+            wraplength=panel_w - 44,
+        ).pack(anchor="w", pady=(10, 0))
+
+        return content
+
+    def _make_onboarding_button(self, parent, text, command, accent=False):
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            fg=C_BG if accent else C_PRI,
+            bg=C_PRI if accent else "#000d12",
+            activeforeground=C_BG,
+            activebackground=C_TEXT if accent else C_DIM,
+            font=("Consolas", 9, "bold"),
+            borderwidth=0,
+            cursor="hand2",
+            padx=14,
+            pady=7,
+            highlightthickness=1,
+            highlightbackground=C_PRI if accent else C_MID,
+        )
+
+    def _show_shortcut_prompt(self):
+        content = self._build_onboarding_panel(
+            "DESKTOP SHORTCUT",
+            "Szeretnél asztali parancsikont létrehozni a Jarvishoz?",
+        )
+        status_text = tk.StringVar(value="")
+
+        tk.Label(
+            content,
+            textvariable=status_text,
+            fg=C_ACC2,
+            bg=C_PANEL,
+            font=("Consolas", 9),
+        ).pack(anchor="w", pady=(14, 0))
+
+        buttons = tk.Frame(content, bg=C_PANEL)
+        buttons.pack(fill="x", side="bottom", pady=(0, 2))
+
+        skip_btn = self._make_onboarding_button(
+            buttons,
+            "KIHAGYÁS",
+            self._decline_shortcut,
+        )
+        skip_btn.pack(side="left")
+
+        create_btn = self._make_onboarding_button(
+            buttons,
+            "LÉTREHOZÁS",
+            lambda: self._start_shortcut_creation(status_text, create_btn, skip_btn),
+            accent=True,
+        )
+        create_btn.pack(side="right")
+
+    def _decline_shortcut(self):
+        onboarding.decline_desktop_shortcut()
+        self._show_next_onboarding_step()
+
+    def _start_shortcut_creation(self, status_text, create_btn, skip_btn):
+        create_btn.configure(state="disabled")
+        skip_btn.configure(state="disabled")
+        status_text.set("Parancsikon létrehozása...")
+
+        threading.Thread(
+            target=self._create_shortcut_worker,
+            daemon=True,
+        ).start()
+
+    def _create_shortcut_worker(self):
+        result = onboarding.create_desktop_shortcut()
+        _run_or_queue(self._show_shortcut_result, result)
+
+    def _show_shortcut_result(self, result):
+        title = "SHORTCUT READY" if result.get("success") else "SHORTCUT ERROR"
+        if result.get("success"):
+            body = "Az asztali parancsikon elkeszult."
+        else:
+            error = result.get("error") or "Ismeretlen hiba."
+            body = f"Nem sikerult letrehozni a parancsikont:\n{error}"
+
+        content = self._build_onboarding_panel(title, body)
+        buttons = tk.Frame(content, bg=C_PANEL)
+        buttons.pack(fill="x", side="bottom", pady=(0, 2))
+        self._make_onboarding_button(
+            buttons,
+            "TOVÁBB",
+            self._show_next_onboarding_step,
+            accent=True,
+        ).pack(side="right")
+
+    def _show_api_key_prompt(self):
+        content = self._build_onboarding_panel(
+            "OPENAI API KEY",
+            "A Jarvis inditásához add meg az OpenAI API kulcsot.",
+        )
+
+        api_key = tk.StringVar()
+        error_text = tk.StringVar(value="")
+
+        entry = tk.Entry(
+            content,
+            textvariable=api_key,
+            show="*",
+            fg=C_TEXT,
+            bg="#000d12",
+            insertbackground=C_TEXT,
+            borderwidth=0,
+            font=("Consolas", 10),
+            highlightthickness=1,
+            highlightbackground=C_DIM,
+            highlightcolor=C_PRI,
+        )
+        entry.pack(fill="x", pady=(16, 0), ipady=6)
+        entry.bind("<Return>", lambda _event: self._submit_api_key(api_key, error_text))
+
+        tk.Label(
+            content,
+            textvariable=error_text,
+            fg=C_RED,
+            bg=C_PANEL,
+            font=("Consolas", 9),
+        ).pack(anchor="w", pady=(8, 0))
+
+        buttons = tk.Frame(content, bg=C_PANEL)
+        buttons.pack(fill="x", side="bottom", pady=(0, 2))
+
+        self._make_onboarding_button(
+            buttons,
+            "BEILLESZTÉS",
+            lambda: self._paste_api_key(api_key, error_text),
+        ).pack(side="left")
+
+        self._make_onboarding_button(
+            buttons,
+            "MENTÉS",
+            lambda: self._submit_api_key(api_key, error_text),
+            accent=True,
+        ).pack(side="right")
+
+        entry.focus_set()
+
+    def _paste_api_key(self, api_key, error_text):
+        try:
+            clipboard_text = self.root.clipboard_get()
+        except tk.TclError:
+            error_text.set("A vágolap üres vagy nem olvasható.")
+            return
+
+        api_key.set(clipboard_text.strip())
+        error_text.set("")
+
+    def _submit_api_key(self, api_key, error_text):
+        value = api_key.get().strip()
+        if not value:
+            error_text.set("Add meg az OpenAI API kulcsot.")
+            return
+
+        onboarding.store_openai_api_key(value)
+        self._show_next_onboarding_step()
 
     @staticmethod
     def _ac(r, g, b, a):
@@ -428,7 +673,7 @@ class JarvisGui:
 
         audio_ducking_enabled = self.audio_ducking_enabled
         try:
-            from backend.audio_ducking import set_enabled
+            from backend.audio.audio_ducking import set_enabled
 
             set_enabled(self.audio_ducking_enabled, self.state == "listening")
         except Exception as exc:
@@ -538,7 +783,7 @@ class JarvisGui:
             self.speaking = False
 
         try:
-            from backend.audio_ducking import set_listening
+            from backend.audio.audio_ducking import set_listening
 
             set_listening(new_state == "listening")
         except Exception as exc:
@@ -560,7 +805,7 @@ class JarvisGui:
             return
 
         try:
-            from backend.audio_ducking import set_listening
+            from backend.audio.audio_ducking import set_listening
 
             set_listening(True)
         except Exception as exc:
@@ -994,6 +1239,10 @@ canvas = _gui.canvas
 chat_box = _gui.chat_box
 time_label = None
 clock_label = None
+
+
+def run_startup_onboarding():
+    _gui.run_startup_onboarding()
 
 
 def set_state(new_state):

@@ -1,4 +1,6 @@
 from config import stt_language, stt_mode, stt_model
+from userdata import get_openai_api_key
+
 samplerate = 16000
 
 if stt_mode == "openai":
@@ -7,7 +9,8 @@ if stt_mode == "openai":
     import tempfile
     import soundfile as sf
 
-    client = OpenAI()
+    api_key = get_openai_api_key()
+    client = OpenAI(api_key=api_key) if api_key else OpenAI()
 
     def transcribe(audio_np):
         fd, filename = tempfile.mkstemp(suffix=".wav")
