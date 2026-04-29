@@ -25,6 +25,12 @@ def should_ask_for_desktop_shortcut() -> bool:
     return not bool(onboarding.get("desktop_shortcut_prompted"))
 
 
+def should_ask_for_startup_shortcut() -> bool:
+    data = ensure_userdata()
+    onboarding = data.get("onboarding", {})
+    return not bool(onboarding.get("startup_shortcut_prompted"))
+
+
 def needs_openai_api_key() -> bool:
     return not has_openai_api_key() and not bool(os.environ.get(OPENAI_API_KEY_ENV))
 
@@ -37,12 +43,30 @@ def decline_desktop_shortcut() -> None:
     )
 
 
+def decline_startup_shortcut() -> None:
+    update_onboarding_status(
+        startup_shortcut_prompted=True,
+        startup_shortcut_created=False,
+        startup_shortcut_error="",
+    )
+
+
 def create_desktop_shortcut() -> dict[str, object]:
-    result = _create_desktop_shortcut()
+    result = _create_shortcut(_desktop_path() / f"{APP_NAME}.lnk")
     update_onboarding_status(
         desktop_shortcut_prompted=True,
         desktop_shortcut_created=result["success"],
         desktop_shortcut_error=result["error"],
+    )
+    return result
+
+
+def create_startup_shortcut() -> dict[str, object]:
+    result = _create_shortcut(_startup_path() / f"{APP_NAME}.lnk")
+    update_onboarding_status(
+        startup_shortcut_prompted=True,
+        startup_shortcut_created=result["success"],
+        startup_shortcut_error=result["error"],
     )
     return result
 
@@ -52,10 +76,8 @@ def store_openai_api_key(api_key: str) -> None:
     save_openai_api_key(api_key)
 
 
-def _create_desktop_shortcut() -> dict[str, object]:
-    desktop = _desktop_path()
-    desktop.mkdir(parents=True, exist_ok=True)
-    shortcut_path = desktop / f"{APP_NAME}.lnk"
+def _create_shortcut(shortcut_path: Path) -> dict[str, object]:
+    shortcut_path.parent.mkdir(parents=True, exist_ok=True)
     target_path = _launcher_target()
     icon_location = _shortcut_icon_path(target_path)
 
@@ -109,6 +131,13 @@ def _desktop_path() -> Path:
     if user_profile:
         return Path(user_profile) / "Desktop"
     return Path.home() / "Desktop"
+
+
+def _startup_path() -> Path:
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    return Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
 
 
 def _launcher_target() -> Path:

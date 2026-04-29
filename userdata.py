@@ -39,6 +39,9 @@ DEFAULT_USERDATA: dict[str, Any] = {
         "desktop_shortcut_prompted": False,
         "desktop_shortcut_created": False,
         "desktop_shortcut_error": "",
+        "startup_shortcut_prompted": False,
+        "startup_shortcut_created": False,
+        "startup_shortcut_error": "",
         "openai_api_key_provided_at": "",
     },
     "credentials": {

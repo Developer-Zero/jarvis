@@ -217,7 +217,11 @@ class JarvisGui:
             print(f"App icon failed to load: {exc}")
 
     def run_startup_onboarding(self):
-        if not onboarding.should_ask_for_desktop_shortcut() and not onboarding.needs_openai_api_key():
+        if (
+            not onboarding.should_ask_for_desktop_shortcut()
+            and not onboarding.should_ask_for_startup_shortcut()
+            and not onboarding.needs_openai_api_key()
+        ):
             return
 
         done = tk.BooleanVar(master=self.root, value=False)
@@ -230,6 +234,10 @@ class JarvisGui:
 
         if onboarding.should_ask_for_desktop_shortcut():
             self._show_shortcut_prompt()
+            return
+
+        if onboarding.should_ask_for_startup_shortcut():
+            self._show_startup_prompt()
             return
 
         if onboarding.needs_openai_api_key():
@@ -384,6 +392,75 @@ class JarvisGui:
         self._make_onboarding_button(
             buttons,
             "TOVÁBB",
+            self._show_next_onboarding_step,
+            accent=True,
+        ).pack(side="right")
+
+    def _show_startup_prompt(self):
+        content = self._build_onboarding_panel(
+            "WINDOWS STARTUP",
+            "Szeretned, hogy a Jarvis automatikusan elinduljon Windows inditaskor?",
+        )
+        status_text = tk.StringVar(value="")
+
+        tk.Label(
+            content,
+            textvariable=status_text,
+            fg=C_ACC2,
+            bg=C_PANEL,
+            font=("Consolas", 9),
+        ).pack(anchor="w", pady=(14, 0))
+
+        buttons = tk.Frame(content, bg=C_PANEL)
+        buttons.pack(fill="x", side="bottom", pady=(0, 2))
+
+        skip_btn = self._make_onboarding_button(
+            buttons,
+            "KIHAGYAS",
+            self._decline_startup,
+        )
+        skip_btn.pack(side="left")
+
+        create_btn = self._make_onboarding_button(
+            buttons,
+            "BEKAPCSOLAS",
+            lambda: self._start_startup_creation(status_text, create_btn, skip_btn),
+            accent=True,
+        )
+        create_btn.pack(side="right")
+
+    def _decline_startup(self):
+        onboarding.decline_startup_shortcut()
+        self._show_next_onboarding_step()
+
+    def _start_startup_creation(self, status_text, create_btn, skip_btn):
+        create_btn.configure(state="disabled")
+        skip_btn.configure(state="disabled")
+        status_text.set("Automatikus inditas beallitasa...")
+
+        threading.Thread(
+            target=self._create_startup_worker,
+            daemon=True,
+        ).start()
+
+    def _create_startup_worker(self):
+        result = onboarding.create_startup_shortcut()
+        _run_or_queue(self._show_startup_result, result)
+
+    def _show_startup_result(self, result):
+        title = "STARTUP READY" if result.get("success") else "STARTUP ERROR"
+        if result.get("success"):
+            body = "A Jarvis el fog indulni Windows inditaskor."
+        else:
+            error = result.get("error") or "Ismeretlen hiba."
+            body = f"Nem sikerult beallitani az automatikus inditast:\n{error}"
+
+        content = self._build_onboarding_panel(title, body)
+        buttons = tk.Frame(content, bg=C_PANEL)
+        buttons.pack(fill="x", side="bottom", pady=(0, 2))
+        self._make_onboarding_button(
+            buttons,
+            "TOVABB",
             self._show_next_onboarding_step,
             accent=True,
         ).pack(side="right")
