@@ -30,6 +30,7 @@ def install_requirements() -> dict[str, object]:
         return {
             "success": False,
             "returncode": 1,
+            "stage": "requirements",
             "error": f"Missing requirements file: {REQUIREMENTS_PATH}",
         }
 
@@ -48,13 +49,46 @@ def install_requirements() -> dict[str, object]:
         return {
             "success": False,
             "returncode": 1,
+            "stage": "requirements",
             "error": str(exc),
         }
 
     return {
         "success": completed.returncode == 0,
         "returncode": completed.returncode,
+        "stage": "requirements",
         "error": "" if completed.returncode == 0 else f"pip exited with {completed.returncode}",
+    }
+
+
+def download_model_assets() -> dict[str, object]:
+    try:
+        print("Downloading openWakeWord models...")
+        import openwakeword.utils
+
+        openwakeword.utils.download_models()
+
+        print("Downloading Silero VAD model...")
+        import torch
+
+        torch.hub.load(
+            repo_or_dir="snakers4/silero-vad",
+            model="silero_vad",
+            trust_repo=True,
+        )
+    except Exception as exc:
+        return {
+            "success": False,
+            "returncode": 1,
+            "stage": "model assets",
+            "error": str(exc),
+        }
+
+    return {
+        "success": True,
+        "returncode": 0,
+        "stage": "model assets",
+        "error": "",
     }
 
 
@@ -62,19 +96,28 @@ def run_setup() -> dict[str, object]:
     result = install_requirements()
     success = bool(result.get("success"))
     error = str(result.get("error") or "")
-    status = "requirements installed" if success else "requirements install failed"
+    stage = str(result.get("stage") or "requirements")
+
+    if success:
+        result = download_model_assets()
+        success = bool(result.get("success"))
+        error = str(result.get("error") or "")
+        stage = str(result.get("stage") or "model assets")
+
+    status = "setup complete" if success else f"{stage} failed"
 
     update_setup_status(
         completed=success,
         result=status,
         error=error,
         requirements_file=str(REQUIREMENTS_PATH.relative_to(BASE_DIR)),
+        model_assets_downloaded=success,
     )
     return result
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Install Jarvis requirements.")
+    parser = argparse.ArgumentParser(description="Install Jarvis requirements and speech models.")
     parser.parse_args()
 
     result = run_setup()

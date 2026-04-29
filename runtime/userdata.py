@@ -33,6 +33,7 @@ DEFAULT_USERDATA: dict[str, Any] = {
         "completed": False,
         "completed_at": "",
         "requirements_file": "runtime/requirements.txt",
+        "model_assets_downloaded": False,
         "last_result": "",
         "last_error": "",
     },
@@ -103,10 +104,12 @@ def update_setup_status(
     result: str,
     error: str = "",
     requirements_file: str = "runtime/requirements.txt",
+    model_assets_downloaded: bool = False,
 ) -> dict[str, Any]:
     data = ensure_userdata()
     data["setup"]["completed"] = bool(completed)
     data["setup"]["requirements_file"] = requirements_file
+    data["setup"]["model_assets_downloaded"] = bool(model_assets_downloaded)
     data["setup"]["last_result"] = result
     data["setup"]["last_error"] = error
     if completed:

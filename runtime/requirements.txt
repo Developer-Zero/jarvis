@@ -3,7 +3,7 @@ numpy
 openai
 openpyxl
 openwakeword
-playsound
+playsound==1.2.2
 pyaudio
 python-docx
 python-pptx

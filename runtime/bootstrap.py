@@ -21,8 +21,8 @@ def bootstrap_application() -> None:
     data = ensure_userdata()
     setup_data = data.get("setup", {})
 
-    if not setup_data.get("completed"):
-        print("First launch detected. Running runtime/setup.py...")
+    if not setup_data.get("completed") or not setup_data.get("model_assets_downloaded"):
+        print("Setup incomplete. Running runtime/setup.py...")
         result = run_setup()
         if not result.get("success"):
             error = result.get("error") or "Unknown setup error"
