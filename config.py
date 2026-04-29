@@ -8,11 +8,11 @@ language = "hu"
 
 # Wake word detection
 wake_word_model = "hey_jarvis" # models: "hey_jarvis", "hey_alexa", "hey_google", etc.
-wake_word_threshold = 0.4 # sensitive 0-1 non-sensitive
+wake_word_threshold = 0.35 # sensitive 0-1 non-sensitive
 
 
 # Speech recording
-calibration_seconds = 0.35 # The recording will listen to the environment for this long to calibrate the noise floor
+calibration_seconds = 0.45 # The recording will listen to the environment for this long to calibrate the noise floor
 no_speech_timeout = 4.0 # If no speech is detected for this long -> no speech
 max_record_seconds = 15.0 # Max recording time, recording will cut after this long
 min_speech_seconds = 0.35 # Speech need to be at least this long to be considered real speech
@@ -21,8 +21,8 @@ silence_after_speech = 1.0 # This much silence is needed before the speech is co
 start_vad_threshold = 0.52 # Noise reduction threshold. sensitive 0-1 non-sensitive, this is used to determine when speech starts
 stop_vad_threshold = 0.38 # Smaller than start_vad_threshold, this is used to determine when speech ends
 
-start_energy_multiplier = 1.5 # Multiplier for the noise_floor's volume to determine the start of speech
-stop_energy_multiplier = 1.2 # Multiplier for the noise_floor's volume to determine the end of speech
+start_energy_multiplier = 1.65 # Multiplier for the noise_floor's volume to determine the start of speech
+stop_energy_multiplier = 1.35 # Multiplier for the noise_floor's volume to determine the end of speech
 
 speech_start_frames = 2 # Number of consecutive frames that need to be above the start threshold to consider speech started
 speech_stop_frames = 10 # Number of consecutive frames that need to be below the stop threshold

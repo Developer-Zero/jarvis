@@ -20,3 +20,4 @@ build/
 *.spec
 .DS_Store
 Thumbs.db
+test.py

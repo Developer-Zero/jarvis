@@ -1,4 +1,5 @@
 import time
+import threading
 from collections import deque
 
 import numpy as np
@@ -10,6 +11,7 @@ from config import calibration_seconds, no_speech_timeout, max_record_seconds, m
 block_size = 512
 samplerate = 16000
 _vad_model = None
+_vad_model_lock = threading.Lock()
 
 
 def rms(x: np.ndarray) -> float:
@@ -24,16 +26,27 @@ def normalize(audio: np.ndarray) -> np.ndarray:
 
 def get_vad_model():
     global _vad_model
-    if _vad_model is None:
-        import torch
+    if _vad_model is not None:
+        return _vad_model
 
-        model, _ = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad",
-            model="silero_vad",
-            trust_repo=True,
-        )
-        _vad_model = model
+    with _vad_model_lock:
+        if _vad_model is None:
+            print("Loading VAD model...")
+            import torch
+
+            model, _ = torch.hub.load(
+                repo_or_dir="snakers4/silero-vad",
+                model="silero_vad",
+                trust_repo=True,
+            )
+            _vad_model = model
     return _vad_model
+
+
+def preload_vad_model() -> threading.Thread:
+    thread = threading.Thread(target=get_vad_model, daemon=True)
+    thread.start()
+    return thread
 
 
 def record_user_speech(

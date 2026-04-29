@@ -16,10 +16,11 @@ import frontend.gui as gui
 
 gui.run_startup_onboarding()
 
+import config
 from backend.agent import ask_agent
 from backend.audio.audio_ducking import restore as restore_audio_ducking
 from backend.audio.sounds import START_SOUND, WAKE_SOUND, play_sound, play_sound_async
-from backend.speech.record_speech import record_user_speech
+from backend.speech.record_speech import preload_vad_model, record_user_speech
 from backend.speech.stt import transcribe
 from backend.speech.wake_word import WakeWordDetector
 from frontend.hotkeys import start_global_hotkeys
@@ -57,16 +58,19 @@ def listen_for_wake_word() -> bool:
             while not gui.get_muted():
                 if detector.detect():
                     print("Wake word detected")
-                    play_wake_sound()
                     return True
 
+def delay_listening():
+    time.sleep(config.calibration_seconds)
+    gui.set_state("listening")
+    play_wake_sound()
 
 def record_speech() -> str | None:
     if gui.get_muted():
         gui.set_state("muted")
         return None
 
-    gui.set_state("listening")
+    threading.Thread(target=delay_listening, daemon=True).start()
     audio_np = record_user_speech(should_stop=gui.get_muted)
     if audio_np is not None:
         if gui.get_muted():
@@ -114,6 +118,7 @@ def agent(user_input: str) -> None:
 
 def main() -> None:
     print("Listening for wake word")
+    preload_vad_model()
     should_wait_for_wake_word = True
 
     while True:
