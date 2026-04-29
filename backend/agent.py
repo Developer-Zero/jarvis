@@ -1,11 +1,18 @@
 import json
-import time
-import threading
 
-
-from config import ttt_language, ttt_mode, ttt_model, max_message_history, max_query_length, max_steps
+from config import (
+    max_message_history,
+    max_query_length,
+    max_steps,
+    semantic_memory_enabled,
+    ttt_language,
+    ttt_mode,
+    ttt_model,
+)
+from backend.memory import SemanticMemory, format_memories_for_prompt
 from backend.tools.registry import build_default_registry, tool_result_for_model
 from runtime.userdata import get_openai_api_key
+
 
 SYSTEM_PROMPT = f"""
 You are a Jarvis-like AI execution agent.
@@ -48,29 +55,45 @@ OUTPUT RULES
 - JSON only for tool calls
 - User only sees final answer
 
+MEMORY
+- Relevant long-term memories may be supplied as context
+- Treat memories as helpful context, not guaranteed current truth
+- Save durable user facts/preferences only when useful for future conversations
+- Save memories when the user explicitly asks you to remember something
+- Search memory if the user asks what you remember or past context is needed
+
 CONSTRAINTS
 - Do not explain reasoning
 - Do not describe internal steps
 
 MENTAL MODEL
-Interpret → decide → act via tools → return short spoken response
+Interpret -> decide -> act via tools -> return short spoken response
 """
+
 
 class Agent:
     def __init__(self):
-        self.messages = [] # Message history with system prompt
+        self.messages = []
         self.prompt = SYSTEM_PROMPT
-        self.tool_registry = build_default_registry()
-        self.tools = self.tool_registry.get_openai_schemas()
-        
+        self.client = None
+
         self.max_history = max_message_history
         self.max_query_length = max_query_length
         self.max_steps = max_steps
+        self.memory = None
+        self.active_memory_context = ""
 
         if ttt_mode == "openai":
             from openai import OpenAI
+
             api_key = get_openai_api_key()
             self.client = OpenAI(api_key=api_key) if api_key else OpenAI()
+
+        if semantic_memory_enabled:
+            self.memory = SemanticMemory(client=self.client)
+
+        self.tool_registry = build_default_registry(self.memory)
+        self.tools = self.tool_registry.get_openai_schemas()
 
     def get_safe_history(self):
         history = self.messages[-self.max_history:]
@@ -99,15 +122,22 @@ class Agent:
 
         return safe_history
 
-
     def ask_model(self):
         if ttt_mode == "openai":
             try:
+                messages = [{"role": "system", "content": self.prompt}]
+                if self.active_memory_context:
+                    messages.append({
+                        "role": "system",
+                        "content": self.active_memory_context,
+                    })
+                messages.extend(self.get_safe_history())
+
                 response = self.client.chat.completions.create(
-                        model=ttt_model,
-                        tools=self.tools,
-                        tool_choice="auto",
-                        messages=([{"role": "system", "content": self.prompt}] + self.get_safe_history())
+                    model=ttt_model,
+                    tools=self.tools,
+                    tool_choice="auto",
+                    messages=messages,
                 )
                 return response
             except Exception as e:
@@ -115,56 +145,68 @@ class Agent:
                 raise
         else:
             raise ValueError(f"Unsupported ttt_mode: {ttt_mode}")
-    
 
     def ask_agent(self, input):
         self.messages.append({"role": "user", "content": input})
+        self.active_memory_context = self._build_memory_context(input)
 
-        steps = 0
-        while True:
-            steps += 1
-            if steps == self.max_steps - 1:
-                self.messages.append({"role": "system", "content": "You must give a final answer now. No tool calls allowed."})
-            elif steps >= self.max_steps:
-                return "Hiba: Túl sok lépés"
+        try:
+            steps = 0
+            while True:
+                steps += 1
+                if steps == self.max_steps - 1:
+                    self.messages.append({
+                        "role": "system",
+                        "content": "You must give a final answer now. No tool calls allowed.",
+                    })
+                elif steps >= self.max_steps:
+                    return "Hiba: Túl sok lépés"
 
-            print(f"Asking model | Messages: {self.messages}")
-            try:
-                response = self.ask_model()
-            except Exception as e:
-                print(f"Error getting model response: {e}")
-                return f"Hiba: {str(e)}"
-            message = response.choices[0].message
-            
-            # Add assistant response with tool_calls to 'messages'
-            assistant_message = {
-                "role": "assistant",
-                "content": message.content or ""
-            }
+                #print(f"Asking model | Messages: {self.messages}")
+                try:
+                    response = self.ask_model()
+                except Exception as e:
+                    print(f"Error getting model response: {e}")
+                    return f"Hiba: {str(e)}"
+                message = response.choices[0].message
 
-            if message.tool_calls:
-                assistant_message["tool_calls"] = [
-                    {
-                        "id": tool_call.id,
-                        "type": tool_call.type,
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments
+                assistant_message = {
+                    "role": "assistant",
+                    "content": message.content or "",
+                }
+
+                if message.tool_calls:
+                    assistant_message["tool_calls"] = [
+                        {
+                            "id": tool_call.id,
+                            "type": tool_call.type,
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments,
+                            },
                         }
-                    }
-                    for tool_call in message.tool_calls
-                ]
+                        for tool_call in message.tool_calls
+                    ]
+                
+                print(f"Jarvis: {message.content}")
 
-            self.messages.append(assistant_message)
-            
-            print("Model responded: executing tasks")
-            if message.tool_calls:
-                self.execute_commands(message.tool_calls)
-            else:
-                print(f"Final answer given with {steps} steps")
-                return message.content
+                self.messages.append(assistant_message)
 
+                print("Model responded: executing tasks")
+                if message.tool_calls:
+                    self.execute_commands(message.tool_calls)
+                else:
+                    print(f"Final answer given with {steps} steps")
+                    return message.content
+        finally:
+            self.active_memory_context = ""
 
+    def _build_memory_context(self, input_text: str) -> str:
+        if not self.memory:
+            return ""
+
+        memories = self.memory.search(input_text)
+        return format_memories_for_prompt(memories)
 
     def execute_commands(self, tool_calls):
         for tool_call in tool_calls:
@@ -184,6 +226,7 @@ class Agent:
                     "tool_call_id": tool_call.id,
                     "content": result[:self.max_query_length],
                 })
+                print(f"Tool: {result[:self.max_query_length]}")
                 continue
 
             tool_result = self.tool_registry.execute(name, args)
@@ -194,11 +237,10 @@ class Agent:
                 "tool_call_id": tool_call.id,
                 "content": result[:self.max_query_length],
             })
+            print(f"Tool: {result[:self.max_query_length]}")
 
-
-# Module-level instance and function for easy import
 _agent_instance = Agent()
 
+
 def ask_agent(input_text):
-    """Module-level function to ask the agent"""
     return _agent_instance.ask_agent(input_text)

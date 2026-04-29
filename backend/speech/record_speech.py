@@ -1,11 +1,25 @@
-import time
 import threading
+import time
 from collections import deque
 
 import numpy as np
 import sounddevice as sd
 
-from config import calibration_seconds, no_speech_timeout, max_record_seconds, min_speech_seconds, silence_after_speech, start_vad_threshold, stop_vad_threshold, start_energy_multiplier, stop_energy_multiplier, speech_start_frames, speech_stop_frames, prebuffer_seconds
+from backend.speech.audio_session import input_stream_lock
+from config import (
+    calibration_seconds,
+    max_record_seconds,
+    min_speech_seconds,
+    no_speech_timeout,
+    prebuffer_seconds,
+    silence_after_speech,
+    speech_start_frames,
+    speech_stop_frames,
+    start_energy_multiplier,
+    start_vad_threshold,
+    stop_energy_multiplier,
+    stop_vad_threshold,
+)
 
 
 block_size = 512
@@ -49,33 +63,30 @@ def preload_vad_model() -> threading.Thread:
     return thread
 
 
+def _cancelled(should_stop) -> bool:
+    return should_stop is not None and should_stop()
+
+
 def record_user_speech(
     vad_model=None,
     sample_rate: int = samplerate,
     block_size: int = block_size,
     should_stop=None,
-
     calibration_seconds: float = calibration_seconds,
     no_speech_timeout: float = no_speech_timeout,
     max_record_seconds: float = max_record_seconds,
-
     min_speech_seconds: float = min_speech_seconds,
     silence_after_speech: float = silence_after_speech,
-
     start_vad_threshold: float = start_vad_threshold,
     stop_vad_threshold: float = stop_vad_threshold,
-
     start_energy_multiplier: float = start_energy_multiplier,
     stop_energy_multiplier: float = stop_energy_multiplier,
-
     speech_start_frames: int = speech_start_frames,
     speech_stop_frames: int = speech_stop_frames,
-
     prebuffer_seconds: float = prebuffer_seconds,
 ):
     """
-    Returns:
-        np.ndarray audio, or None if no real speech was detected.
+    Returns np.ndarray audio, or None if no real speech was detected.
     """
 
     if vad_model is None:
@@ -83,113 +94,92 @@ def record_user_speech(
 
     import torch
 
-    print("Calibrating noise...")
-
     prebuffer_max_frames = int(prebuffer_seconds * sample_rate / block_size)
     prebuffer = deque(maxlen=prebuffer_max_frames)
-
     recorded = []
     noise_rms_values = []
 
-    with sd.InputStream(
-        samplerate=sample_rate,
-        channels=1,
-        dtype="float32",
-        blocksize=block_size
-    ) as stream:
+    with input_stream_lock:
+        with sd.InputStream(
+            samplerate=sample_rate,
+            channels=1,
+            dtype="float32",
+            blocksize=block_size,
+        ) as stream:
+            calibration_end = time.perf_counter() + calibration_seconds
 
-        # -------------------------
-        # 1. Noise calibration
-        # -------------------------
-        calibration_end = time.perf_counter() + calibration_seconds
-
-        while time.perf_counter() < calibration_end:
-            if should_stop is not None and should_stop():
-                print("Recording cancelled.")
-                return None
-
-            data, overflowed = stream.read(block_size)
-            frame = data[:, 0].copy()
-
-            frame_rms = rms(frame)
-            noise_rms_values.append(frame_rms)
-
-        if not noise_rms_values:
-            return None
-
-        # Robusztusabb, mint az átlag, mert kevésbé érzékeny zajtüskére
-        noise_floor = float(np.percentile(noise_rms_values, 65))
-
-        # Minimum, hogy teljes csendben se legyen irreálisan alacsony
-        noise_floor = max(noise_floor, 0.0015)
-
-        print(f"Noise floor: {noise_floor:.5f}")
-
-        # -------------------------
-        # 2. Recording state
-        # -------------------------
-        started = False
-        speech_frames = 0
-        silence_frames = 0
-
-        speech_start_time = None
-        last_real_speech_time = None
-        global_start_time = time.perf_counter()
-
-        while True:
-            if should_stop is not None and should_stop():
-                print("Recording cancelled.")
-                return None
-
-            now = time.perf_counter()
-
-            # Emergency stop
-            if now - global_start_time > max_record_seconds:
-                print("Max recording time reached.")
-                break
-
-            data, overflowed = stream.read(block_size)
-            frame = data[:, 0].copy()
-            prebuffer.append(frame)
-
-            frame_rms = rms(frame)
-
-            # Silero VAD probability
-            tensor = torch.from_numpy(frame)
-            vad_prob = float(vad_model(tensor, sample_rate).item())
-
-            # Adaptív energia-alapú feltétel
-            start_energy_ok = frame_rms > noise_floor * start_energy_multiplier
-            stop_energy_ok = frame_rms > noise_floor * stop_energy_multiplier
-
-            # Külön start és stop logika hysteresis miatt
-            if not started:
-                is_speech = vad_prob >= start_vad_threshold and start_energy_ok
-
-                if is_speech:
-                    speech_frames += 1
-                else:
-                    speech_frames = max(0, speech_frames - 1)
-
-                # Csak akkor induljon, ha több egymást követő frame beszéd
-                if speech_frames >= speech_start_frames:
-                    print("Speech started.")
-
-                    started = True
-                    speech_start_time = now
-                    last_real_speech_time = now
-
-                    recorded.extend(list(prebuffer))
-                    prebuffer.clear()
-
-                # Ha sokáig nincs valódi beszéd, return None
-                if now - global_start_time > no_speech_timeout:
-                    print("No speech detected.")
+            while time.perf_counter() < calibration_end:
+                if _cancelled(should_stop):
+                    print("Recording cancelled.")
                     return None
 
-            else:
-                recorded.append(frame)
+                data, _overflowed = stream.read(block_size)
+                if _cancelled(should_stop):
+                    print("Recording cancelled.")
+                    return None
 
+                frame = data[:, 0].copy()
+                noise_rms_values.append(rms(frame))
+
+            if not noise_rms_values:
+                return None
+
+            noise_floor = float(np.percentile(noise_rms_values, 65))
+            noise_floor = max(noise_floor, 0.0015)
+            print(f"Noise floor: {noise_floor:.5f}")
+
+            started = False
+            speech_frames = 0
+            silence_frames = 0
+            speech_start_time = None
+            last_real_speech_time = None
+            global_start_time = time.perf_counter()
+
+            while True:
+                if _cancelled(should_stop):
+                    print("Recording cancelled.")
+                    return None
+
+                now = time.perf_counter()
+                if now - global_start_time > max_record_seconds:
+                    print("Max recording time reached.")
+                    break
+
+                data, _overflowed = stream.read(block_size)
+                if _cancelled(should_stop):
+                    print("Recording cancelled.")
+                    return None
+
+                frame = data[:, 0].copy()
+                prebuffer.append(frame)
+                frame_rms = rms(frame)
+
+                tensor = torch.from_numpy(frame)
+                vad_prob = float(vad_model(tensor, sample_rate).item())
+                start_energy_ok = frame_rms > noise_floor * start_energy_multiplier
+                stop_energy_ok = frame_rms > noise_floor * stop_energy_multiplier
+
+                if not started:
+                    is_speech = vad_prob >= start_vad_threshold and start_energy_ok
+                    if is_speech:
+                        speech_frames += 1
+                    else:
+                        speech_frames = max(0, speech_frames - 1)
+
+                    if speech_frames >= speech_start_frames:
+                        print("Speech started.")
+                        started = True
+                        speech_start_time = now
+                        last_real_speech_time = now
+                        recorded.extend(list(prebuffer))
+                        prebuffer.clear()
+
+                    if now - global_start_time > no_speech_timeout:
+                        print("No speech detected.")
+                        return None
+                    continue
+
+                recorded.append(frame)
                 is_still_speech = vad_prob >= stop_vad_threshold and stop_energy_ok
 
                 if is_still_speech:
@@ -199,8 +189,6 @@ def record_user_speech(
                     silence_frames += 1
 
                 silence_duration = now - last_real_speech_time
-
-                # Csak akkor álljon le, ha tényleg volt elég beszéd
                 speech_duration = now - speech_start_time
 
                 enough_speech = speech_duration >= min_speech_seconds
@@ -215,12 +203,9 @@ def record_user_speech(
         return None
 
     audio = np.concatenate(recorded).astype(np.float32)
-
-    # Túl rövid “beszéd” kidobása
     duration = len(audio) / sample_rate
     if duration < min_speech_seconds:
         print("Rejected: too short.")
         return None
 
-    audio = normalize(audio)
-    return audio
+    return normalize(audio)

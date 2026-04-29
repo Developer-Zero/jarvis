@@ -1,6 +1,9 @@
 import numpy as np
 
+from backend.speech.audio_session import input_stream_lock
 from config import wake_word_model, wake_word_threshold
+
+
 samplerate = 16000
 block_size = 1024
 
@@ -20,26 +23,34 @@ class WakeWordDetector:
         self.model = None
         self.pyaudio = None
         self.stream = None
+        self._input_lock_acquired = False
 
     def start(self) -> None:
         if self.stream is not None:
             return
 
-        import pyaudio
-        from openwakeword.model import Model
+        input_stream_lock.acquire()
+        self._input_lock_acquired = True
 
-        self.model = Model(
-            wakeword_models=[self.model_name],
-            inference_framework="onnx",
-        )
-        self.pyaudio = pyaudio.PyAudio()
-        self.stream = self.pyaudio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=self.sample_rate,
-            input=True,
-            frames_per_buffer=self.frame_size,
-        )
+        try:
+            import pyaudio
+            from openwakeword.model import Model
+
+            self.model = Model(
+                wakeword_models=[self.model_name],
+                inference_framework="onnx",
+            )
+            self.pyaudio = pyaudio.PyAudio()
+            self.stream = self.pyaudio.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self.sample_rate,
+                input=True,
+                frames_per_buffer=self.frame_size,
+            )
+        except Exception:
+            self.close()
+            raise
 
     def detect(self) -> bool:
         self.start()
@@ -56,15 +67,26 @@ class WakeWordDetector:
         if self.stream is not None:
             try:
                 self.stream.stop_stream()
-            finally:
+            except Exception as exc:
+                print(f"Wake word stream stop failed: {exc}")
+            try:
                 self.stream.close()
-                self.stream = None
+            except Exception as exc:
+                print(f"Wake word stream close failed: {exc}")
+            self.stream = None
 
         if self.pyaudio is not None:
-            self.pyaudio.terminate()
+            try:
+                self.pyaudio.terminate()
+            except Exception as exc:
+                print(f"Wake word PyAudio terminate failed: {exc}")
             self.pyaudio = None
 
         self.model = None
+
+        if self._input_lock_acquired:
+            self._input_lock_acquired = False
+            input_stream_lock.release()
 
     def __enter__(self):
         self.start()

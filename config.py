@@ -57,6 +57,14 @@ max_message_history = 10 # Amount of messages the agent can remember at a time, 
 max_query_length = 1000 # Amount of characters a tool can return - example: how many characters can the model retrive from a website
 max_steps = 7 # * How many steps and retries can a more complicated plan have
 
+# Semantic memory
+semantic_memory_enabled = True # Store and retrieve durable user facts/preferences between sessions
+semantic_memory_model = "text-embedding-3-small" # OpenAI embedding model used for semantic search
+semantic_memory_top_k = 5 # Number of relevant memories injected into the agent context
+semantic_memory_min_score = 0.25 # Minimum similarity score for automatic memory recall
+semantic_memory_max_items = 500 # Maximum stored memories before the oldest ones are pruned
+semantic_memory_max_context_chars = 1200 # Maximum characters of recalled memory context sent to the model
+
 # Ducking
 duck_percentage = 0.4 # Volume multiplier for other apps when Jarvis is listening and ducking is on. full mute 0.0-1.0 no ducking
 ducking_default = False # If the ducking should be on by default when the program starts

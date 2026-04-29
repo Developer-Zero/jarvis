@@ -15,9 +15,12 @@ tmp/
 *.tmp
 *.jsonl
 userdata.json
+memory.json
 dist/
 build/
 *.spec
 .DS_Store
 Thumbs.db
 test.py
+JarvisLauncher.cs
+jarvis.log
