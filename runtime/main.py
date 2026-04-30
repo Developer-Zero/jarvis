@@ -175,6 +175,7 @@ def record_speech() -> str | None:
 
 
 def agent(user_input: str) -> None:
+    gui.begin_thinking()
     try:
         gui.send_message("User", user_input)
         gui.set_state("thinking")
@@ -192,6 +193,7 @@ def agent(user_input: str) -> None:
             queue_tts(response)
             wait_for_tts()
     finally:
+        gui.end_thinking()
         gui.set_state("muted" if gui.get_muted() else "idle")
 
 

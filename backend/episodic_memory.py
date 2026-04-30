@@ -349,7 +349,6 @@ class EpisodicMemory:
             "action_items": item.get("action_items", []),
             "importance": item.get("importance", 0.5),
             "metadata": item.get("metadata", {}),
-            "updated_at": item.get("updated_at", ""),
             "hits": item.get("hits", 0),
         }
 

@@ -70,7 +70,7 @@ OUTPUT RULES
 
 MEMORY
 - Relevant semantic and episodic memories may be supplied as context
-- Save relevant semantic memories proactively
+- Save relevant semantic memories proactively, without needing the user to ask
 - Save immediately when the user states a durable preference, personal fact, project fact, environment detail, recurring workflow, correction, or instruction
 
 CONSTRAINTS
@@ -121,7 +121,10 @@ class Agent:
                 client=self.client,
             )
 
-        self.tool_registry = build_default_registry(self.semantic_memory)
+        self.tool_registry = build_default_registry(
+            semantic_memory=self.semantic_memory,
+            episodic_memory=self.episodic_memory,
+        )
         self.tools = self.tool_registry.get_openai_schemas()
 
     def get_safe_history(self):

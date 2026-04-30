@@ -1,6 +1,7 @@
 import json
 
 from backend.tools.base import Tool, ToolResult
+from backend.tools.episodic_memory_tools import build_episodic_memory_tools
 from backend.tools.file_tools import FILE_TOOLS
 from backend.tools.semantic_memory_tools import build_semantic_memory_tools
 from backend.tools.system_tools import SYSTEM_TOOLS
@@ -35,12 +36,14 @@ class ToolRegistry:
         return tool.execute(args)
 
 
-def build_default_registry(semantic_memory=None) -> ToolRegistry:
+def build_default_registry(semantic_memory=None, episodic_memory=None) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register_many(SYSTEM_TOOLS)
     registry.register_many(FILE_TOOLS)
     if semantic_memory is not None:
         registry.register_many(build_semantic_memory_tools(semantic_memory))
+    if episodic_memory is not None:
+        registry.register_many(build_episodic_memory_tools(episodic_memory))
     return registry
 
 

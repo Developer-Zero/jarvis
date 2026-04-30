@@ -172,6 +172,7 @@ class JarvisGui:
         self.status_blink = True
         self.typing_queue = deque()
         self.is_typing = False
+        self._thinking_tasks = 0
         self.on_text_command = None
         self.monitor_open = False
         self._ducking_refresh_job = None
@@ -839,6 +840,9 @@ class JarvisGui:
     def set_state(self, new_state):
         global state, state_change_time
 
+        if new_state == "idle" and self._thinking_tasks > 0 and not self.muted:
+            new_state = "thinking"
+
         self.state = new_state
         self.state_change_time = time.time()
         state = new_state
@@ -868,6 +872,23 @@ class JarvisGui:
             print(f"Audio ducking state sync failed: {exc}")
 
         self._sync_audio_ducking_refresh()
+
+    def begin_thinking(self):
+        self._thinking_tasks += 1
+        self.set_state("thinking")
+
+    def end_thinking(self):
+        if self._thinking_tasks > 0:
+            self._thinking_tasks -= 1
+
+        if (
+            self._thinking_tasks == 0
+            and self.state == "thinking"
+            and not self.is_typing
+            and not self.typing_queue
+            and not self.muted
+        ):
+            self.set_state("idle")
 
     def _sync_audio_ducking_refresh(self):
         should_refresh = self.audio_ducking_enabled and self.state == "listening"
@@ -909,7 +930,7 @@ class JarvisGui:
     def _start_typing(self):
         if not self.typing_queue:
             self.is_typing = False
-            if not self.speaking and not self.muted:
+            if not self.speaking and not self.muted and self._thinking_tasks == 0:
                 self.set_state("idle")
             return
 
@@ -1329,6 +1350,22 @@ def set_state(new_state):
         return
 
     _gui.set_state(new_state)
+
+
+def begin_thinking():
+    if threading.get_ident() != _MAIN_THREAD_ID:
+        _run_or_queue(begin_thinking)
+        return
+
+    _gui.begin_thinking()
+
+
+def end_thinking():
+    if threading.get_ident() != _MAIN_THREAD_ID:
+        _run_or_queue(end_thinking)
+        return
+
+    _gui.end_thinking()
 
 
 def send_message(sender, text):

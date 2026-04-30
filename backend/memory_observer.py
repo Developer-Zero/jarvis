@@ -7,12 +7,15 @@ from typing import Any
 
 from config import (
     episodic_memory_event_raw_chars,
+    episodic_memory_storage_mode,
+    episodic_memory_summary_every_turns,
+    episodic_memory_summary_min_turns,
     episodic_memory_summary_mode,
     episodic_memory_summary_source_events,
     episodic_memory_summary_model,
 )
 from backend.episodic_memory import EpisodicMemory
-from backend.semantic_memory import _clean_text
+from backend.semantic_memory import _clean_text, _now
 from runtime.userdata import get_openai_api_key
 
 
@@ -30,6 +33,9 @@ class MemoryObserver:
         self.episodic_memory = episodic_memory
         self.client = client
         self.model = model
+        self._session_turns: dict[str, list[dict[str, Any]]] = {}
+        self._session_turn_counts: dict[str, int] = {}
+        self._last_summary_turn_count: dict[str, int] = {}
 
     def observe_turn(
         self,
@@ -43,120 +49,103 @@ class MemoryObserver:
         if not raw_text:
             return None
 
-        extracted = self._extract_turn(raw_text, tool_events or [])
-        try:
-            event = self.episodic_memory.remember_event(
-                session_id=session_id,
-                event_type=extracted.get("type") or "turn",
-                summary=extracted.get("summary") or raw_text[:240],
-                raw_text=raw_text[:episodic_memory_event_raw_chars],
-                topics=extracted.get("topics") or [],
-                project_refs=extracted.get("project_refs") or [],
-                decisions=extracted.get("decisions") or [],
-                action_items=extracted.get("action_items") or [],
-                importance=extracted.get("importance", 0.5),
-                metadata={
-                    "source": "memory_observer",
-                    "tool_events": tool_events or [],
-                },
-            )
-        except Exception as exc:
-            print(f"Episodic memory event save failed: {exc}")
-            return None
+        turn = self._build_turn_record(
+            session_id=session_id,
+            user_text=user_text,
+            assistant_text=assistant_text,
+            raw_text=raw_text,
+            tool_events=tool_events or [],
+        )
+        self._remember_buffered_turn(session_id, turn)
 
-        self.refresh_session_summary(session_id)
+        event = None
+        if self._storage_mode() == "events_and_summaries":
+            event = self._save_turn_event(session_id, turn)
+
+        if self._should_refresh_session_summary(session_id):
+            summary = self.refresh_session_summary(session_id)
+            if summary is not None:
+                return summary
+
         return event
 
     def refresh_session_summary(self, session_id: str) -> dict[str, Any] | None:
-        events = self.episodic_memory.list_session_events(
-            session_id,
-            limit=episodic_memory_summary_source_events,
-        )
-        if not events:
+        turns = self._session_turns.get(session_id, [])[
+            -max(1, int(episodic_memory_summary_source_events)) :
+        ]
+        if not turns:
+            turns = self.episodic_memory.list_session_events(
+                session_id,
+                limit=episodic_memory_summary_source_events,
+            )
+        if not turns:
             return None
 
-        extracted = self._summarize_session(events)
+        extracted = self._summarize_session(turns)
         source_event_ids = [
-            str(event.get("id", "")) for event in events if event.get("id")
+            str(turn.get("id", "")) for turn in turns if turn.get("id")
         ]
         try:
-            return self.episodic_memory.upsert_session_summary(
+            summary = self.episodic_memory.upsert_session_summary(
                 session_id=session_id,
-                summary=extracted.get("summary") or self._fallback_session_summary(events),
+                summary=extracted.get("summary") or self._fallback_session_summary(turns),
                 topics=extracted.get("topics") or [],
                 project_refs=extracted.get("project_refs") or [],
                 decisions=extracted.get("decisions") or [],
                 action_items=extracted.get("action_items") or [],
                 source_event_ids=source_event_ids,
-                metadata={"source": "memory_observer"},
+                metadata={
+                    "source": "memory_observer",
+                    "storage_mode": self._storage_mode(),
+                    "turn_count": self._session_turn_counts.get(session_id, 0),
+                    "buffered_turn_count": len(self._session_turns.get(session_id, [])),
+                },
             )
+            self._last_summary_turn_count[session_id] = self._session_turn_counts.get(
+                session_id,
+                0,
+            )
+            return summary
         except Exception as exc:
             print(f"Episodic session summary save failed: {exc}")
             return None
 
-    def _extract_turn(
-        self,
-        raw_text: str,
-        tool_events: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        prompt = (
-            "Extract an episodic memory event from this Jarvis conversation turn. "
-            "Return only JSON with keys: type, summary, topics, project_refs, "
-            "decisions, action_items, importance, metadata. "
-            "Use concise Hungarian text when the conversation is Hungarian. "
-            "Do not invent facts; use empty arrays when uncertain. "
-            "Importance must be a number between 0 and 1.\n\n"
-            f"Tool events JSON: {json.dumps(tool_events, ensure_ascii=False)}\n\n"
-            f"Turn:\n{raw_text}"
-        )
-        result = self._json_from_model(prompt)
-        if result:
-            return self._normalize_extraction(result)
-        return {
-            "type": "turn",
-            "summary": raw_text[:240],
-            "topics": [],
-            "project_refs": [],
-            "decisions": [],
-            "action_items": [],
-            "importance": 0.4,
-            "metadata": {"extraction": "fallback"},
-        }
-
-    def _summarize_session(self, events: list[dict[str, Any]]) -> dict[str, Any]:
-        event_lines = []
-        for event in events:
-            event_lines.append(
+    def _summarize_session(self, turns: list[dict[str, Any]]) -> dict[str, Any]:
+        turn_lines = []
+        for turn in turns:
+            turn_lines.append(
                 json.dumps(
                     {
-                        "timestamp": event.get("timestamp"),
-                        "type": event.get("type"),
-                        "summary": event.get("summary"),
-                        "topics": event.get("topics", []),
-                        "project_refs": event.get("project_refs", []),
-                        "decisions": event.get("decisions", []),
-                        "action_items": event.get("action_items", []),
+                        "timestamp": turn.get("timestamp"),
+                        "type": turn.get("type", "turn"),
+                        "summary": turn.get("summary"),
+                        "raw_text": turn.get("raw_text"),
+                        "tool_events": (turn.get("metadata") or {}).get("tool_events", []),
+                        "topics": turn.get("topics", []),
+                        "project_refs": turn.get("project_refs", []),
+                        "decisions": turn.get("decisions", []),
+                        "action_items": turn.get("action_items", []),
                     },
                     ensure_ascii=False,
                 )
             )
 
         prompt = (
-            "Create or refresh a concise episodic session summary from these events. "
+            "Create or refresh a concise episodic session summary from these turns. "
             "Return only JSON with keys: summary, topics, project_refs, decisions, "
             "action_items. Keep it compact, merge duplicates, and preserve open tasks.\n\n"
-            + "\n".join(event_lines)
+            + "\n".join(turn_lines)
         )
         result = self._json_from_model(prompt)
         if result:
             return self._normalize_extraction(result)
 
         return {
-            "summary": self._fallback_session_summary(events),
-            "topics": self._merge_event_lists(events, "topics"),
-            "project_refs": self._merge_event_lists(events, "project_refs"),
-            "decisions": self._merge_event_lists(events, "decisions"),
-            "action_items": self._merge_event_lists(events, "action_items"),
+            "summary": self._fallback_session_summary(turns),
+            "topics": self._merge_event_lists(turns, "topics"),
+            "project_refs": self._merge_event_lists(turns, "project_refs"),
+            "decisions": self._merge_event_lists(turns, "decisions"),
+            "action_items": self._merge_event_lists(turns, "action_items"),
         }
 
     def _json_from_model(self, prompt: str) -> dict[str, Any] | None:
@@ -268,6 +257,111 @@ class MemoryObserver:
             if tool_names:
                 parts.append("Tools used: " + ", ".join(tool_names))
         return _clean_text("\n".join(part for part in parts if part.strip()))
+
+    def _build_turn_record(
+        self,
+        *,
+        session_id: str,
+        user_text: str,
+        assistant_text: str,
+        raw_text: str,
+        tool_events: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        timestamp = _now()
+        summary = self._fallback_turn_summary(user_text, assistant_text, tool_events)
+        return {
+            "id": f"{session_id}:{timestamp}",
+            "timestamp": timestamp,
+            "session_id": session_id,
+            "type": "turn",
+            "summary": summary,
+            "raw_text": raw_text[:episodic_memory_event_raw_chars],
+            "raw_ref": None,
+            "topics": [],
+            "project_refs": [],
+            "decisions": [],
+            "action_items": [],
+            "importance": 0.4,
+            "metadata": {
+                "source": "memory_observer_buffer",
+                "tool_events": tool_events,
+            },
+        }
+
+    def _remember_buffered_turn(self, session_id: str, turn: dict[str, Any]) -> None:
+        self._session_turn_counts[session_id] = (
+            self._session_turn_counts.get(session_id, 0) + 1
+        )
+        turns = self._session_turns.setdefault(session_id, [])
+        turns.append(turn)
+        max_turns = max(1, int(episodic_memory_summary_source_events) * 2)
+        if len(turns) > max_turns:
+            del turns[:-max_turns]
+
+    def _save_turn_event(
+        self,
+        session_id: str,
+        turn: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        try:
+            return self.episodic_memory.remember_event(
+                session_id=session_id,
+                event_type="turn",
+                summary=turn.get("summary") or turn.get("raw_text", "")[:240],
+                raw_text=turn.get("raw_text"),
+                raw_ref=turn.get("raw_ref"),
+                topics=turn.get("topics") or [],
+                project_refs=turn.get("project_refs") or [],
+                decisions=turn.get("decisions") or [],
+                action_items=turn.get("action_items") or [],
+                importance=turn.get("importance", 0.4),
+                metadata=turn.get("metadata") or {},
+            )
+        except Exception as exc:
+            print(f"Episodic memory event save failed: {exc}")
+            return None
+
+    def _should_refresh_session_summary(self, session_id: str) -> bool:
+        turn_count = self._session_turn_counts.get(session_id, 0)
+        min_turns = max(1, int(episodic_memory_summary_min_turns))
+        every_turns = max(1, int(episodic_memory_summary_every_turns))
+        if turn_count < min_turns:
+            return False
+
+        last_count = self._last_summary_turn_count.get(session_id, 0)
+        if last_count == 0:
+            return True
+
+        return turn_count - last_count >= every_turns
+
+    def _storage_mode(self) -> str:
+        mode = str(episodic_memory_storage_mode or "summaries_only").strip().lower()
+        if mode in {"summaries_only", "events_and_summaries"}:
+            return mode
+        print(f"Unsupported episodic memory storage mode: {episodic_memory_storage_mode}")
+        return "summaries_only"
+
+    def _fallback_turn_summary(
+        self,
+        user_text: str,
+        assistant_text: str,
+        tool_events: list[dict[str, Any]],
+    ) -> str:
+        user = _clean_text(user_text)[:180]
+        assistant = _clean_text(assistant_text)[:220]
+        parts = []
+        if user:
+            parts.append(f"User: {user}")
+        if assistant:
+            parts.append(f"Assistant: {assistant}")
+        tool_names = [
+            str(event.get("name", ""))
+            for event in tool_events
+            if event.get("name")
+        ]
+        if tool_names:
+            parts.append("Tools: " + ", ".join(tool_names[:8]))
+        return " | ".join(parts)[:500]
 
     def _fallback_session_summary(self, events: list[dict[str, Any]]) -> str:
         summaries = [

@@ -229,7 +229,6 @@ class SemanticMemory:
             "text": item.get("text", ""),
             "metadata": item.get("metadata", {}),
             "created_at": item.get("created_at", ""),
-            "updated_at": item.get("updated_at", ""),
             "hits": item.get("hits", 0),
         }
 
