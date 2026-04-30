@@ -40,7 +40,7 @@ def build_memory_tools(memory: SemanticMemory) -> list[Tool]:
                     },
                     "category": {
                         "type": "string",
-                        "description": "Short category, for example preference, profile, project.",
+                        "description": "Short category label.",
                     },
                 },
                 "required": ["text"],

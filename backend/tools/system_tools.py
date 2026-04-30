@@ -44,7 +44,7 @@ def open_url(url: str) -> ToolResult:
         return error
 
     webbrowser.open(url)
-    return ToolResult(status="ok", content=f"Opened URL: {url}")
+    return ToolResult(status="ok", content="Opened URL")
 
 
 def open_file(path: str) -> ToolResult:
@@ -53,7 +53,7 @@ def open_file(path: str) -> ToolResult:
         return error
 
     os.startfile(str(resolved))
-    return ToolResult(status="ok", content=f"Opened file: {resolved}")
+    return ToolResult(status="ok", content="Opened local file")
 
 
 def press_key(key: int) -> None:

@@ -48,6 +48,8 @@ COMMUNICATION
 - No slang, no filler
 - Mild sarcasm only if request is irrational
 - Confirm only what matters to the user
+- After opening or launching something, confirm only that it is open
+- Do not mention where an app, shortcut, file, or command was found
 
 ERROR HANDLING
 - On failure, retry up to 2 times with a different reasonable approach
@@ -58,13 +60,13 @@ OUTPUT RULES
 - Do not include JSON, links, raw file paths, stack traces, IDs, or technical syntax in the final answer
 - Do not mention hidden execution details in the final answer
 - If a path or technical detail is necessary, summarize it naturally instead of reading the raw value
+- Do not repeat tool results, memory text, or context details verbatim
+- Never include concrete source locations in confirmations
 
 MEMORY
 - Relevant long-term memories may be supplied as context
-- Save relevant long-term memories proactively, without waiting for an explicit request
-- Save immediately when the user states a durable preference, personal fact, project fact, environment detail, recurring workflow, correction, or instruction that may matter later
-- Do not save secrets, credentials, temporary commands, or one-off facts
-- Search memory when the user asks what you remember or past context may help complete the task
+- Save relevant long-term memories proactively
+- Save immediately when the user states a durable preference, personal fact, project fact, environment detail, recurring workflow, correction, or instruction
 
 CONSTRAINTS
 - Do not explain reasoning
@@ -192,7 +194,7 @@ class Agent:
                         for tool_call in message.tool_calls
                     ]
                 
-                print(f"Jarvis: {message.content}")
+                print(f"Jarvis: {assistant_message}")
 
                 self.messages.append(assistant_message)
 
@@ -230,7 +232,7 @@ class Agent:
                     "tool_call_id": tool_call.id,
                     "content": result[:self.max_query_length],
                 })
-                print(f"Tool: {result[:self.max_query_length]}")
+                print({"role": "tool","tool_call_id": tool_call.id,"content": result[:self.max_query_length],})
                 continue
 
             tool_result = self.tool_registry.execute(name, args)
@@ -241,7 +243,7 @@ class Agent:
                 "tool_call_id": tool_call.id,
                 "content": result[:self.max_query_length],
             })
-            print(f"Tool: {result[:self.max_query_length]}")
+            print({"role": "tool","tool_call_id": tool_call.id,"content": result[:self.max_query_length],})
 
 _agent_instance = Agent()
 

@@ -14,7 +14,7 @@ wake_word_threshold = 0.35 # sensitive 0-1 non-sensitive
 # Speech recording
 calibration_seconds = 0.45 # The recording will listen to the environment for this long to calibrate the noise floor
 no_speech_timeout = 4.0 # If no speech is detected for this long -> no speech
-max_record_seconds = 15.0 # Max recording time, recording will cut after this long
+max_record_seconds = 20.0 # Max recording time, recording will cut after this long
 min_speech_seconds = 0.35 # Speech need to be at least this long to be considered real speech
 silence_after_speech = 1.0 # This much silence is needed before the speech is considered ended
 
