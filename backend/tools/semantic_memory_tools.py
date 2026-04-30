@@ -1,34 +1,37 @@
 from __future__ import annotations
 
-from backend.memory import SemanticMemory
+from backend.semantic_memory import SemanticMemory
 from backend.tools.base import Tool, ToolResult
 
 
-def build_memory_tools(memory: SemanticMemory) -> list[Tool]:
-    def save_memory(text: str, category: str = "general") -> ToolResult:
-        item = memory.remember(
+def build_semantic_memory_tools(semantic_memory: SemanticMemory) -> list[Tool]:
+    def save_semantic_memory(text: str, category: str = "general") -> ToolResult:
+        item = semantic_memory.remember(
             text,
             metadata={"category": category, "source": "agent"},
         )
         return ToolResult(status="ok", content=item)
 
-    def search_memory(query: str, limit: int = 5) -> ToolResult:
-        results = memory.search(query, limit=limit, min_score=0.01)
+    def search_semantic_memory(query: str, limit: int = 5) -> ToolResult:
+        results = semantic_memory.search(query, limit=limit, min_score=0.01)
         return ToolResult(status="ok", content=results)
 
-    def list_memories(limit: int = 20) -> ToolResult:
-        return ToolResult(status="ok", content=memory.list_recent(limit=limit))
+    def list_semantic_memories(limit: int = 20) -> ToolResult:
+        return ToolResult(status="ok", content=semantic_memory.list_recent(limit=limit))
 
-    def forget_memory(memory_id: str) -> ToolResult:
-        if memory.forget(memory_id):
-            return ToolResult(status="ok", content=f"Forgot memory: {memory_id}")
-        return ToolResult(status="error", error="Memory not found")
+    def forget_semantic_memory(semantic_memory_id: str) -> ToolResult:
+        if semantic_memory.forget(semantic_memory_id):
+            return ToolResult(
+                status="ok",
+                content=f"Forgot semantic memory: {semantic_memory_id}",
+            )
+        return ToolResult(status="error", error="Semantic memory not found")
 
     return [
         Tool(
-            name="save_memory",
+            name="save_semantic_memory",
             description=(
-                "Save a durable long-term memory about the user or their stable "
+                "Save a durable semantic memory about the user or their stable "
                 "preferences. Do not save secrets, credentials, or one-off commands."
             ),
             parameters={
@@ -45,10 +48,10 @@ def build_memory_tools(memory: SemanticMemory) -> list[Tool]:
                 },
                 "required": ["text"],
             },
-            function=save_memory,
+            function=save_semantic_memory,
         ),
         Tool(
-            name="search_memory",
+            name="search_semantic_memory",
             description="Search long-term semantic memory for relevant past user facts or preferences.",
             parameters={
                 "type": "object",
@@ -62,11 +65,11 @@ def build_memory_tools(memory: SemanticMemory) -> list[Tool]:
                 },
                 "required": ["query"],
             },
-            function=search_memory,
+            function=search_semantic_memory,
         ),
         Tool(
-            name="list_memories",
-            description="List the most recent long-term memories.",
+            name="list_semantic_memories",
+            description="List the most recent long-term semantic memories.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -77,18 +80,18 @@ def build_memory_tools(memory: SemanticMemory) -> list[Tool]:
                     },
                 },
             },
-            function=list_memories,
+            function=list_semantic_memories,
         ),
         Tool(
-            name="forget_memory",
-            description="Delete a long-term memory by its id.",
+            name="forget_semantic_memory",
+            description="Delete a semantic memory by its id.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "memory_id": {"type": "string"},
+                    "semantic_memory_id": {"type": "string"},
                 },
-                "required": ["memory_id"],
+                "required": ["semantic_memory_id"],
             },
-            function=forget_memory,
+            function=forget_semantic_memory,
         ),
     ]

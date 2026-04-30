@@ -13,13 +13,13 @@ from config import (
     semantic_memory_max_context_chars,
     semantic_memory_max_items,
     semantic_memory_min_score,
-    semantic_memory_model,
+    memory_model,
     semantic_memory_top_k,
 )
 from runtime.userdata import RUNTIME_DIR, get_openai_api_key
 
 
-MEMORY_PATH = RUNTIME_DIR / "memory.json"
+SEMANTIC_MEMORY_PATH = RUNTIME_DIR / "semantic_memory.json"
 WORD_RE = re.compile(r"\w+", re.UNICODE)
 
 
@@ -31,7 +31,7 @@ def _clean_text(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
-def _memory_id(text: str) -> str:
+def _semantic_memory_id(text: str) -> str:
     digest = hashlib.sha256(text.strip().lower().encode("utf-8")).hexdigest()
     return digest[:16]
 
@@ -59,7 +59,11 @@ def _lexical_similarity(query: str, text: str) -> float:
 
 
 class SemanticMemory:
-    def __init__(self, path: Path = MEMORY_PATH, client: Any | None = None):
+    def __init__(
+        self,
+        path: Path = SEMANTIC_MEMORY_PATH,
+        client: Any | None = None,
+    ):
         self.path = path
         self.client = client
         self._lock = threading.RLock()
@@ -106,7 +110,7 @@ class SemanticMemory:
 
         try:
             response = client.embeddings.create(
-                model=semantic_memory_model,
+                model=memory_model,
                 input=text,
             )
             return list(response.data[0].embedding)
@@ -117,10 +121,10 @@ class SemanticMemory:
     def remember(self, text: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         text = _clean_text(text)
         if not text:
-            raise ValueError("Memory text cannot be empty")
+            raise ValueError("Semantic memory text cannot be empty")
 
         metadata = dict(metadata or {})
-        memory_id = _memory_id(text)
+        semantic_memory_id = _semantic_memory_id(text)
 
         with self._lock:
             data = self._load()
@@ -128,7 +132,7 @@ class SemanticMemory:
             embedding = self._embedding(text)
 
             for item in data["items"]:
-                if item.get("id") == memory_id:
+                if item.get("id") == semantic_memory_id:
                     item["text"] = text
                     item["metadata"] = {**item.get("metadata", {}), **metadata}
                     if embedding is not None:
@@ -138,7 +142,7 @@ class SemanticMemory:
                     return self._public_item(item)
 
             item = {
-                "id": memory_id,
+                "id": semantic_memory_id,
                 "text": text,
                 "metadata": metadata,
                 "embedding": embedding,
@@ -195,16 +199,18 @@ class SemanticMemory:
 
             return results
 
-    def forget(self, memory_id: str) -> bool:
-        memory_id = str(memory_id or "").strip()
-        if not memory_id:
+    def forget(self, semantic_memory_id: str) -> bool:
+        semantic_memory_id = str(semantic_memory_id or "").strip()
+        if not semantic_memory_id:
             return False
 
         with self._lock:
             data = self._load()
             original_count = len(data["items"])
             data["items"] = [
-                item for item in data["items"] if item.get("id") != memory_id
+                item
+                for item in data["items"]
+                if item.get("id") != semantic_memory_id
             ]
             changed = len(data["items"]) != original_count
             if changed:
@@ -228,15 +234,17 @@ class SemanticMemory:
         }
 
 
-def format_memories_for_prompt(memories: list[dict[str, Any]]) -> str:
-    if not memories:
+def format_semantic_memories_for_prompt(
+    semantic_memories: list[dict[str, Any]],
+) -> str:
+    if not semantic_memories:
         return ""
 
-    lines = ["Relevant long-term memories:"]
+    lines = ["Relevant semantic memories:"]
     remaining = semantic_memory_max_context_chars
 
-    for memory in memories:
-        text = _clean_text(str(memory.get("text", "")))
+    for semantic_memory in semantic_memories:
+        text = _clean_text(str(semantic_memory.get("text", "")))
         if not text:
             continue
 

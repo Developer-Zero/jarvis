@@ -1,6 +1,8 @@
 import json
+import uuid
 
 from config import (
+    episodic_memory_enabled,
     max_message_history,
     max_query_length,
     max_steps,
@@ -9,7 +11,10 @@ from config import (
     ttt_mode,
     ttt_model,
 )
-from backend.memory import SemanticMemory, format_memories_for_prompt
+from backend.episodic_memory import EpisodicMemory
+from backend.semantic_memory import SemanticMemory
+from backend.memory_context import MemoryContextBuilder
+from backend.memory_observer import MemoryObserver
 from backend.tools.registry import build_default_registry, tool_result_for_model
 from runtime.userdata import get_openai_api_key
 
@@ -60,12 +65,12 @@ OUTPUT RULES
 - Do not include JSON, links, raw file paths, stack traces, IDs, or technical syntax in the final answer
 - Do not mention hidden execution details in the final answer
 - If a path or technical detail is necessary, summarize it naturally instead of reading the raw value
-- Do not repeat tool results, memory text, or context details verbatim
+- Do not repeat tool results, semantic memory text, episodic memory text, or context details verbatim
 - Never include concrete source locations in confirmations
 
 MEMORY
-- Relevant long-term memories may be supplied as context
-- Save relevant long-term memories proactively
+- Relevant semantic and episodic memories may be supplied as context
+- Save relevant semantic memories proactively
 - Save immediately when the user states a durable preference, personal fact, project fact, environment detail, recurring workflow, correction, or instruction
 
 CONSTRAINTS
@@ -86,7 +91,11 @@ class Agent:
         self.max_history = max_message_history
         self.max_query_length = max_query_length
         self.max_steps = max_steps
-        self.memory = None
+        self.semantic_memory = None
+        self.episodic_memory = None
+        self.memory_observer = None
+        self.memory_context_builder = None
+        self.session_id = uuid.uuid4().hex
         self.active_memory_context = ""
 
         if ttt_mode == "openai":
@@ -96,9 +105,23 @@ class Agent:
             self.client = OpenAI(api_key=api_key) if api_key else OpenAI()
 
         if semantic_memory_enabled:
-            self.memory = SemanticMemory(client=self.client)
+            self.semantic_memory = SemanticMemory(client=self.client)
 
-        self.tool_registry = build_default_registry(self.memory)
+        if episodic_memory_enabled:
+            self.episodic_memory = EpisodicMemory(client=self.client)
+            self.memory_observer = MemoryObserver(
+                self.episodic_memory,
+                client=self.client,
+            )
+
+        if self.semantic_memory or self.episodic_memory:
+            self.memory_context_builder = MemoryContextBuilder(
+                semantic_memory=self.semantic_memory,
+                episodic_memory=self.episodic_memory,
+                client=self.client,
+            )
+
+        self.tool_registry = build_default_registry(self.semantic_memory)
         self.tools = self.tool_registry.get_openai_schemas()
 
     def get_safe_history(self):
@@ -155,6 +178,7 @@ class Agent:
     def ask_agent(self, input):
         self.messages.append({"role": "user", "content": input})
         self.active_memory_context = self._build_memory_context(input)
+        tool_events = []
 
         try:
             steps = 0
@@ -166,14 +190,17 @@ class Agent:
                         "content": "You must give a final answer now. No tool calls allowed.",
                     })
                 elif steps >= self.max_steps:
+                    self._observe_turn(input, "Hiba: tul sok lepes", tool_events)
                     return "Hiba: Túl sok lépés"
 
-                #print(f"Asking model | Messages: {self.messages}")
+                print(f"Asking model | Messages: {self.messages}")
                 try:
                     response = self.ask_model()
                 except Exception as e:
                     print(f"Error getting model response: {e}")
-                    return f"Hiba: {str(e)}"
+                    answer = f"Hiba: {str(e)}"
+                    self._observe_turn(input, answer, tool_events)
+                    return answer
                 message = response.choices[0].message
 
                 assistant_message = {
@@ -200,21 +227,37 @@ class Agent:
 
                 print("Model responded: executing tasks")
                 if message.tool_calls:
-                    self.execute_commands(message.tool_calls)
+                    tool_events.extend(self.execute_commands(message.tool_calls))
                 else:
                     print(f"Final answer given with {steps} steps")
-                    return message.content
+                    answer = message.content or ""
+                    self._observe_turn(input, answer, tool_events)
+                    return answer
         finally:
             self.active_memory_context = ""
 
     def _build_memory_context(self, input_text: str) -> str:
-        if not self.memory:
+        if not self.memory_context_builder:
             return ""
 
-        memories = self.memory.search(input_text)
-        return format_memories_for_prompt(memories)
+        return self.memory_context_builder.build(input_text)
+
+    def _observe_turn(self, input_text: str, answer: str, tool_events: list[dict]) -> None:
+        if not self.memory_observer:
+            return
+
+        try:
+            self.memory_observer.observe_turn(
+                session_id=self.session_id,
+                user_text=input_text,
+                assistant_text=answer,
+                tool_events=tool_events,
+            )
+        except Exception as exc:
+            print(f"Memory observer failed: {exc}")
 
     def execute_commands(self, tool_calls):
+        events = []
         for tool_call in tool_calls:
             name = tool_call.function.name
 
@@ -233,6 +276,11 @@ class Agent:
                     "content": result[:self.max_query_length],
                 })
                 print({"role": "tool","tool_call_id": tool_call.id,"content": result[:self.max_query_length],})
+                events.append({
+                    "name": name,
+                    "status": "error",
+                    "error": f"Invalid JSON arguments: {e}",
+                })
                 continue
 
             tool_result = self.tool_registry.execute(name, args)
@@ -244,6 +292,14 @@ class Agent:
                 "content": result[:self.max_query_length],
             })
             print({"role": "tool","tool_call_id": tool_call.id,"content": result[:self.max_query_length],})
+
+            events.append({
+                "name": name,
+                "status": tool_result.status,
+                "error": tool_result.error,
+            })
+
+        return events
 
 _agent_instance = Agent()
 

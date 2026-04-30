@@ -2,7 +2,7 @@ import json
 
 from backend.tools.base import Tool, ToolResult
 from backend.tools.file_tools import FILE_TOOLS
-from backend.tools.memory_tools import build_memory_tools
+from backend.tools.semantic_memory_tools import build_semantic_memory_tools
 from backend.tools.system_tools import SYSTEM_TOOLS
 
 
@@ -35,12 +35,12 @@ class ToolRegistry:
         return tool.execute(args)
 
 
-def build_default_registry(memory=None) -> ToolRegistry:
+def build_default_registry(semantic_memory=None) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register_many(SYSTEM_TOOLS)
     registry.register_many(FILE_TOOLS)
-    if memory is not None:
-        registry.register_many(build_memory_tools(memory))
+    if semantic_memory is not None:
+        registry.register_many(build_semantic_memory_tools(semantic_memory))
     return registry
 
 

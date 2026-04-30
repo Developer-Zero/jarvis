@@ -14,8 +14,7 @@ temp/
 tmp/
 *.tmp
 *.jsonl
-userdata.json
-memory.json
+*.json
 dist/
 build/
 *.spec
