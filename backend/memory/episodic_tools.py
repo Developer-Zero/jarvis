@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.episodic_memory import EpisodicMemory, EpisodicQuery
-from backend.semantic_memory import _clean_text
+from backend.memory.episodic import EpisodicMemory, EpisodicQuery
+from backend.memory.semantic import _clean_text
 from backend.tools.base import Tool, ToolResult
 
 

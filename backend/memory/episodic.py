@@ -15,7 +15,7 @@ from config import (
     episodic_memory_top_k,
     memory_model,
 )
-from backend.semantic_memory import _clean_text, _cosine_similarity, _lexical_similarity, _now
+from backend.memory.semantic import _clean_text, _cosine_similarity, _lexical_similarity, _now
 from runtime.userdata import RUNTIME_DIR, get_openai_api_key
 
 

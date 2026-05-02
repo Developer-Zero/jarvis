@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from config import episodic_memory_min_score, episodic_memory_top_k, ttt_model
-from backend.episodic_memory import (
+from backend.memory.episodic import (
     EpisodicMemory,
     EpisodicQuery,
     format_episodic_memories_for_prompt,
 )
-from backend.semantic_memory import (
+from backend.memory.semantic import (
     SemanticMemory,
     format_semantic_memories_for_prompt,
 )

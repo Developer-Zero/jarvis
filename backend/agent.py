@@ -11,10 +11,12 @@ from config import (
     ttt_mode,
     ttt_model,
 )
-from backend.episodic_memory import EpisodicMemory
-from backend.semantic_memory import SemanticMemory
-from backend.memory_context import MemoryContextBuilder
-from backend.memory_observer import MemoryObserver
+from backend.memory import (
+    EpisodicMemory,
+    MemoryContextBuilder,
+    MemoryObserver,
+    SemanticMemory,
+)
 from backend.tools.registry import build_default_registry, tool_result_for_model
 from runtime.userdata import get_openai_api_key
 

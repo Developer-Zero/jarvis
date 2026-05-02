@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.semantic_memory import SemanticMemory
+from backend.memory.semantic import SemanticMemory
 from backend.tools.base import Tool, ToolResult
 
 

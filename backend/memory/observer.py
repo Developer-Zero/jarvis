@@ -14,8 +14,8 @@ from config import (
     episodic_memory_summary_source_events,
     episodic_memory_summary_model,
 )
-from backend.episodic_memory import EpisodicMemory
-from backend.semantic_memory import _clean_text, _now
+from backend.memory.episodic import EpisodicMemory
+from backend.memory.semantic import _clean_text, _now
 from runtime.userdata import get_openai_api_key
 
 

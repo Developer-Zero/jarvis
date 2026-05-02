@@ -1,10 +1,10 @@
 import json
 
 from backend.tools.base import Tool, ToolResult
-from backend.tools.episodic_memory_tools import build_episodic_memory_tools
 from backend.tools.file_tools import FILE_TOOLS
-from backend.tools.semantic_memory_tools import build_semantic_memory_tools
 from backend.tools.system_tools import SYSTEM_TOOLS
+from backend.memory.episodic_tools import build_episodic_memory_tools
+from backend.memory.semantic_tools import build_semantic_memory_tools
 
 
 class ToolRegistry:
