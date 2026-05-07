@@ -57,6 +57,12 @@ max_message_history = 10 # Amount of messages the agent can remember at a time, 
 max_query_length = 1300 # Amount of characters a tool can return - example: how many characters can the model retrive from a website
 max_steps = 7 # * How many steps and retries can a more complicated plan have
 
+# Tools
+music_provider = "youtube_music" # "youtube_music", "spotify"
+browser_debugging_enabled = True # Start a Jarvis-controlled debug browser with the app
+browser_debugging_port = 9222 # * Local Chrome DevTools port for browser tools
+default_page = "https://www.google.com" # Open on startup when no other tabs are open
+
 # Memory
 memory_model = "text-embedding-3-small" # * OpenAI embedding model used for semantic search
 
@@ -86,4 +92,4 @@ duck_percentage = 0.35 # Volume multiplier for other apps when Jarvis is listeni
 ducking_default = False # If the ducking should be on by default when the program starts
 
 # Mute
-vk_mute = 0x75 # Virtual key code for mute toggle
+vk_mute = 0x71 # Virtual key code for mute toggle

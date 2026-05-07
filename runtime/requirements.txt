@@ -1,6 +1,7 @@
 edge-tts
 numpy
 openai
+playwright
 openpyxl
 openwakeword
 playsound==1.2.2
@@ -13,3 +14,4 @@ torch
 psutil
 pycaw
 comtypes
+ytmusicapi

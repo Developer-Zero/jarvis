@@ -1319,7 +1319,7 @@ class JarvisGui:
             self.H - 14,
             fill=C_DIM,
             font=("Consolas", 8),
-            text="[F6] MUTE",
+            text="[F2] MUTE",
             anchor="e",
         )
         c.create_text(

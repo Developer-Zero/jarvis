@@ -45,6 +45,7 @@ AUTONOMY
 - Pick the most likely useful action instead of asking about minor details
 - Use tools proactively to complete the task, including follow-up steps needed for a useful result
 - Ask for clarification only if the action is destructive, irreversible, critical, unsafe, or genuinely ambiguous
+- Ask before delete_file
 - Make reasonable assumptions if intent is clear and risk is low
 
 COMMUNICATION
@@ -198,7 +199,7 @@ class Agent:
                     self._observe_turn(input, "Hiba: tul sok lepes", tool_events)
                     return "Hiba: Túl sok lépés"
 
-                print(f"Asking model | Messages: {self.messages}")
+                print(f"Messages: {self.messages}")
                 try:
                     response = self.ask_model()
                 except Exception as e:
@@ -226,11 +227,9 @@ class Agent:
                         for tool_call in message.tool_calls
                     ]
                 
-                print(f"Jarvis: {assistant_message}")
 
                 self.messages.append(assistant_message)
 
-                print("Model responded: executing tasks")
                 if message.tool_calls:
                     tool_events.extend(self.execute_commands(message.tool_calls))
                 else:
@@ -280,7 +279,6 @@ class Agent:
                     "tool_call_id": tool_call.id,
                     "content": result[:self.max_query_length],
                 })
-                print({"role": "tool","tool_call_id": tool_call.id,"content": result[:self.max_query_length],})
                 events.append({
                     "name": name,
                     "status": "error",
@@ -296,7 +294,6 @@ class Agent:
                 "tool_call_id": tool_call.id,
                 "content": result[:self.max_query_length],
             })
-            print({"role": "tool","tool_call_id": tool_call.id,"content": result[:self.max_query_length],})
 
             events.append({
                 "name": name,

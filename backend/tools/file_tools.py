@@ -1,10 +1,14 @@
 import os
+from pathlib import Path
+
 from docx import Document
 from pptx import Presentation
 from openpyxl import load_workbook
 
 from backend.tools.base import Tool, ToolResult
 
+
+BLOCKED_EXECUTABLE_EXTENSIONS = {}
 
 TEXT_EXTENSIONS = {
     "txt", "py", "json", "md", "log", "js", "ts",
@@ -14,6 +18,32 @@ TEXT_EXTENSIONS = {
 
 def get_extension(path: str) -> str:
     return path.lower().split(".")[-1]
+
+
+def _resolve_path(path: str, must_exist: bool = False) -> tuple[Path | None, ToolResult | None]:
+    try:
+        if must_exist:
+            resolved = Path(path).expanduser().resolve(strict=True)
+        else:
+            resolved = Path(path).expanduser().resolve()
+    except OSError:
+        return None, ToolResult(status="error", error="Invalid file path")
+
+    return resolved, None
+
+
+def _validate_openable_file(path: str) -> tuple[Path | None, ToolResult | None]:
+    resolved, error = _resolve_path(path, must_exist=True)
+    if error:
+        return None, error
+
+    if not resolved.is_file():
+        return None, ToolResult(status="error", error="Path is not a file")
+
+    if resolved.suffix.lower() in BLOCKED_EXECUTABLE_EXTENSIONS:
+        return None, ToolResult(status="error", error="Opening this file type is blocked")
+
+    return resolved, None
 
 
 def read_text(path: str) -> ToolResult:
@@ -89,10 +119,57 @@ def list_files(path: str) -> ToolResult:
     return ToolResult(status="ok", content=os.listdir(path))
 
 
+def open_file(path: str) -> ToolResult:
+    resolved, error = _validate_openable_file(path)
+    if error:
+        return error
+
+    os.startfile(str(resolved))
+    return ToolResult(status="ok", content="Opened file")
+
+
+def create_file(path: str, content: str = "") -> ToolResult:
+    resolved, error = _resolve_path(path)
+    if error:
+        return error
+
+    if resolved.exists():
+        return ToolResult(status="error", error="File already exists")
+
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    resolved.write_text(content, encoding="utf-8")
+    return ToolResult(status="ok", content="Created file")
+
+
+def write_file(path: str, content: str) -> ToolResult:
+    resolved, error = _resolve_path(path)
+    if error:
+        return error
+
+    if resolved.exists() and not resolved.is_file():
+        return ToolResult(status="error", error="Path is not a file")
+
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    resolved.write_text(content, encoding="utf-8")
+    return ToolResult(status="ok", content="Wrote file")
+
+
+def delete_file(path: str) -> ToolResult:
+    resolved, error = _resolve_path(path, must_exist=True)
+    if error:
+        return error
+
+    if not resolved.is_file():
+        return ToolResult(status="error", error="Path is not a file")
+
+    resolved.unlink()
+    return ToolResult(status="ok", content="Deleted file")
+
+
 FILE_TOOLS = [
     Tool(
         name="read_file",
-        description="Read the content of a local file. Supports text, docx, pptx and xlsx files.",
+        description="Read the content of a local file.",
         parameters={
             "type": "object",
             "properties": {
@@ -113,5 +190,53 @@ FILE_TOOLS = [
             "required": ["path"],
         },
         function=list_files,
+    ),
+    Tool(
+        name="open_file",
+        description="Open a local file.",
+        parameters={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+        function=open_file,
+    ),
+    Tool(
+        name="create_file",
+        description="Create a new UTF-8 file.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["path"],
+        },
+        function=create_file,
+    ),
+    Tool(
+        name="write_file",
+        description="Write a UTF-8 file.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["path", "content"],
+        },
+        function=write_file,
+    ),
+    Tool(
+        name="delete_file",
+        description="Delete a file after user confirmation.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"}
+            },
+            "required": ["path"],
+        },
+        function=delete_file,
     ),
 ]

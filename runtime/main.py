@@ -67,11 +67,17 @@ from backend.audio.sounds import START_SOUND, WAKE_SOUND, play_sound, play_sound
 from backend.speech.record_speech import preload_vad_model, record_user_speech
 from backend.speech.stt import transcribe
 from backend.speech.wake_word import WakeWordDetector
+from backend.tools.browser_tools import close_debug_browser, initialize_debug_browser
 from frontend.hotkeys import start_global_hotkeys
 from backend.speech.tts import cancel_tts, queue_tts, wait_for_tts, stop_tts_worker
 
 atexit.register(stop_tts_worker)
 atexit.register(restore_audio_ducking)
+atexit.register(close_debug_browser)
+
+debug_browser_result = initialize_debug_browser()
+if debug_browser_result.status != "ok":
+    logging.warning("Debug browser startup failed: %s", debug_browser_result.error)
 
 _recording_lock = threading.Lock()
 _active_recording_stop: threading.Event | None = None
