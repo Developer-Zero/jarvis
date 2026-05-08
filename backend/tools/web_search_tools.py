@@ -105,6 +105,90 @@ class _BingParser(HTMLParser):
             self._in_algo = False
 
 
+class _EcosiaParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.results = []
+        self._active_link = None
+        self._active_snippet = False
+        self._text = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        class_name = attrs.get("class", "")
+        if (
+            tag == "a"
+            and attrs.get("data-test-id") == "result-link"
+            and "result__link" in class_name.split()
+        ):
+            self._active_link = attrs.get("href", "")
+            self._text = []
+        elif tag == "p" and attrs.get("data-test-id") == "web-result-description":
+            self._active_snippet = True
+            self._text = []
+
+    def handle_data(self, data):
+        if self._active_link is not None or self._active_snippet:
+            text = data.strip()
+            if text:
+                self._text.append(text)
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._active_link is not None:
+            title = " ".join(self._text).strip()
+            url = self._active_link
+            if title and _is_http_url(url):
+                self.results.append({"title": title, "url": url})
+            self._active_link = None
+            self._text = []
+        elif tag == "p" and self._active_snippet:
+            snippet = " ".join(self._text).strip()
+            if snippet and self.results and "snippet" not in self.results[-1]:
+                self.results[-1]["snippet"] = snippet
+            self._active_snippet = False
+            self._text = []
+
+
+class _MojeekParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.results = []
+        self._active_link = None
+        self._active_snippet = False
+        self._text = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        class_name = attrs.get("class", "")
+        if tag == "a" and "title" in class_name.split():
+            self._active_link = attrs.get("href", "")
+            self._text = []
+        elif tag == "p" and "s" in class_name.split():
+            self._active_snippet = True
+            self._text = []
+
+    def handle_data(self, data):
+        if self._active_link is not None or self._active_snippet:
+            text = data.strip()
+            if text:
+                self._text.append(text)
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._active_link is not None:
+            title = " ".join(self._text).strip()
+            url = self._active_link
+            if title and _is_http_url(url):
+                self.results.append({"title": title, "url": url})
+            self._active_link = None
+            self._text = []
+        elif tag == "p" and self._active_snippet:
+            snippet = " ".join(self._text).strip()
+            if snippet and self.results and "snippet" not in self.results[-1]:
+                self.results[-1]["snippet"] = snippet
+            self._active_snippet = False
+            self._text = []
+
+
 class _ReadablePageParser(HTMLParser):
     SKIP_TAGS = {"script", "style", "noscript", "svg", "canvas"}
 
@@ -146,15 +230,28 @@ def web_search(query: str, max_results: int = 5) -> ToolResult:
     max_results = max(1, min(int(max_results), 10))
     errors = []
 
-    for searcher in (_search_duckduckgo_html, _search_duckduckgo_lite, _search_bing):
+    for searcher in (
+        _search_ecosia,
+        _search_mojeek,
+        _search_duckduckgo_html,
+        _search_duckduckgo_lite,
+        _search_bing,
+    ):
         try:
             results = searcher(query, max_results)
             if results:
                 return ToolResult(status="ok", content=results[:max_results])
+            errors.append(f"{searcher.__name__}: no results parsed")
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             errors.append(f"{searcher.__name__}: {exc}")
 
-    return ToolResult(status="error", error="Search failed: " + " | ".join(errors))
+    details = " | ".join(errors) if errors else "all providers returned no results"
+    return ToolResult(status="error", error="Search failed: " + details)
+
+
+def _is_http_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _request_html(url: str) -> str:
@@ -178,6 +275,20 @@ def _request_html(url: str) -> str:
 def _search_duckduckgo_html(query: str, max_results: int) -> list[dict]:
     html = _request_html(f"https://duckduckgo.com/html/?q={quote_plus(query)}")
     parser = _DuckDuckGoParser()
+    parser.feed(html)
+    return parser.results[:max_results]
+
+
+def _search_ecosia(query: str, max_results: int) -> list[dict]:
+    html = _request_html(f"https://www.ecosia.org/search?q={quote_plus(query)}")
+    parser = _EcosiaParser()
+    parser.feed(html)
+    return parser.results[:max_results]
+
+
+def _search_mojeek(query: str, max_results: int) -> list[dict]:
+    html = _request_html(f"https://www.mojeek.com/search?q={quote_plus(query)}")
+    parser = _MojeekParser()
     parser.feed(html)
     return parser.results[:max_results]
 
