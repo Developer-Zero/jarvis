@@ -6,6 +6,7 @@ from backend.tools.browser_tools import BROWSER_TOOLS
 from backend.tools.file_tools import FILE_TOOLS
 from backend.tools.music_tools import MUSIC_TOOLS
 from backend.tools.system_tools import SYSTEM_TOOLS
+from backend.tools.task_tools import TASK_TOOLS
 from backend.tools.volume_tools import VOLUME_TOOLS
 from backend.tools.web_search_tools import WEB_SEARCH_TOOLS
 from backend.memory.episodic_tools import build_episodic_memory_tools
@@ -49,6 +50,7 @@ def build_default_registry(semantic_memory=None, episodic_memory=None) -> ToolRe
     registry.register_many(MUSIC_TOOLS)
     registry.register_many(VOLUME_TOOLS)
     registry.register_many(SYSTEM_TOOLS)
+    registry.register_many(TASK_TOOLS)
     registry.register_many(FILE_TOOLS)
     if semantic_memory is not None:
         registry.register_many(build_semantic_memory_tools(semantic_memory))

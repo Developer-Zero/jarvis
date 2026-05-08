@@ -48,12 +48,12 @@ II_API_KEY = "" # Your ElevenLabs API key.
 
 # Text To Text
 ttt_mode = "openai" # * "openai", "ollama" (support not implemented)
-ttt_model = "gpt-4.1-mini" # * "openai": "gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "o3", "gpt-4.1", "gpt-5", "gpt-4o" (ordered by price) | "ollama": recommended: "mistral:7b"
+ttt_model = "gpt-5-mini" # * "openai": "gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "o3", "gpt-4.1", "gpt-5", "gpt-4o" (ordered by price) | "ollama": recommended: "mistral:7b"
 ttt_language = language # *
 
 
 # Agent
-max_message_history = 10 # Amount of messages the agent can remember at a time, bigger = more expensive
+max_message_history = 20 # Amount of messages the agent can remember at a time, bigger = more expensive
 max_query_length = 1300 # Amount of characters a tool can return - example: how many characters can the model retrive from a website
 max_steps = 7 # * How many steps and retries can a more complicated plan have
 

@@ -10,7 +10,7 @@ def build_semantic_memory_tools(semantic_memory: SemanticMemory) -> list[Tool]:
             text,
             metadata={"category": category, "source": "agent"},
         )
-        return ToolResult(status="ok", content=item)
+        return ToolResult(status="ok", content="Saved memory")
 
     def search_semantic_memory(query: str, limit: int = 5) -> ToolResult:
         results = semantic_memory.search(query, limit=limit, min_score=0.01)
@@ -21,10 +21,7 @@ def build_semantic_memory_tools(semantic_memory: SemanticMemory) -> list[Tool]:
 
     def forget_semantic_memory(semantic_memory_id: str) -> ToolResult:
         if semantic_memory.forget(semantic_memory_id):
-            return ToolResult(
-                status="ok",
-                content=f"Forgot semantic memory: {semantic_memory_id}",
-            )
+            return ToolResult(status="ok", content=f"Forgot semantic memory: {semantic_memory_id}")
         return ToolResult(status="error", error="Semantic memory not found")
 
     return [

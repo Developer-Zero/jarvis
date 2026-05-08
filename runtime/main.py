@@ -67,6 +67,7 @@ from backend.audio.sounds import START_SOUND, WAKE_SOUND, play_sound, play_sound
 from backend.speech.record_speech import preload_vad_model, record_user_speech
 from backend.speech.stt import transcribe
 from backend.speech.wake_word import WakeWordDetector
+from backend.tasks import TaskScheduler, default_task_store
 from backend.tools.browser_tools import close_debug_browser, initialize_debug_browser
 from frontend.hotkeys import start_global_hotkeys
 from backend.speech.tts import cancel_tts, queue_tts, wait_for_tts, stop_tts_worker
@@ -81,6 +82,8 @@ if debug_browser_result.status != "ok":
 
 _recording_lock = threading.Lock()
 _active_recording_stop: threading.Event | None = None
+_agent_run_lock = threading.Lock()
+_task_scheduler: TaskScheduler | None = None
 
 
 def cancel_active_recording() -> None:
@@ -180,27 +183,44 @@ def record_speech() -> str | None:
         return None
 
 
-def agent(user_input: str) -> None:
-    gui.begin_thinking()
-    try:
-        gui.send_message("User", user_input)
-        gui.set_state("thinking")
+def agent(user_input: str, sender: str = "User") -> None:
+    with _agent_run_lock:
+        gui.begin_thinking()
+        try:
+            gui.send_message(sender, user_input)
+            gui.set_state("thinking")
 
-        response = ask_agent(user_input)
-        if gui.get_muted():
-            return
-
-        if response:
-            gui.send_message("Jarvis", response)
+            response = ask_agent(user_input)
             if gui.get_muted():
-                cancel_tts()
                 return
 
-            queue_tts(response)
-            wait_for_tts()
-    finally:
-        gui.end_thinking()
-        gui.set_state("muted" if gui.get_muted() else "idle")
+            if response:
+                gui.send_message("Jarvis", response)
+                if gui.get_muted():
+                    cancel_tts()
+                    return
+
+                queue_tts(response)
+                wait_for_tts()
+        finally:
+            gui.end_thinking()
+            gui.set_state("muted" if gui.get_muted() else "idle")
+
+
+def run_task(task: dict) -> None:
+    prompt = str(task.get("prompt", "")).strip()
+    if not prompt:
+        return
+
+    task_name = str(task.get("name") or task.get("id") or "task")
+
+
+def stop_task_scheduler() -> None:
+    if _task_scheduler is not None:
+        _task_scheduler.stop()
+
+
+atexit.register(stop_task_scheduler)
 
 
 def main() -> None:
@@ -233,9 +253,11 @@ def main() -> None:
         should_wait_for_wake_word = False
 
 if __name__ == "__main__":
+    _task_scheduler = TaskScheduler(default_task_store, run_task)
     gui.set_text_command(agent)
     start_global_hotkeys(gui.toggle_mute)
     play_sound_async(START_SOUND, "Start sound")
     threading.Thread(target=watch_mute_cancellations, daemon=True).start()
     threading.Thread(target=main, daemon=True).start()
+    _task_scheduler.start()
     gui.root.mainloop()
