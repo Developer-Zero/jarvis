@@ -93,6 +93,7 @@ class Agent:
         self.memory_context_builder = None
         self.session_id = uuid.uuid4().hex
         self.active_memory_context = ""
+        self.active_invocation_context = ""
 
         if ttt_mode == "openai":
             from openai import OpenAI
@@ -154,6 +155,11 @@ class Agent:
         if ttt_mode == "openai":
             try:
                 messages = [{"role": "system", "content": self.prompt}]
+                if self.active_invocation_context:
+                    messages.append({
+                        "role": "system",
+                        "content": self.active_invocation_context,
+                    })
                 if self.active_memory_context:
                     messages.append({
                         "role": "system",
@@ -174,9 +180,17 @@ class Agent:
         else:
             raise ValueError(f"Unsupported ttt_mode: {ttt_mode}")
 
-    def ask_agent(self, input):
-        self.messages.append({"role": "user", "content": input})
+    def ask_agent(
+        self,
+        input,
+        invocation_context: str = "",
+        history_content: str | None = None,
+        observation_input: str | None = None,
+    ):
+        self.messages.append({"role": "user", "content": history_content or input})
+        self.active_invocation_context = invocation_context
         self.active_memory_context = self._build_memory_context(input)
+        observed_input = observation_input or input
         tool_events = []
 
         try:
@@ -189,7 +203,7 @@ class Agent:
                         "content": "You must give a final answer now. No tool calls allowed.",
                     })
                 elif steps >= self.max_steps:
-                    self._observe_turn(input, "Hiba: tul sok lepes", tool_events)
+                    self._observe_turn(observed_input, "Hiba: tul sok lepes", tool_events)
                     return "Hiba: Túl sok lépés"
 
                 print(f"Messages: {self.messages}")
@@ -198,7 +212,7 @@ class Agent:
                 except Exception as e:
                     print(f"Error getting model response: {e}")
                     answer = f"Hiba: {str(e)}"
-                    self._observe_turn(input, answer, tool_events)
+                    self._observe_turn(observed_input, answer, tool_events)
                     return answer
                 message = response.choices[0].message
 
@@ -228,10 +242,38 @@ class Agent:
                 else:
                     print(f"Final answer given with {steps} steps")
                     answer = message.content or ""
-                    self._observe_turn(input, answer, tool_events)
+                    self._observe_turn(observed_input, answer, tool_events)
                     return answer
         finally:
+            self.active_invocation_context = ""
             self.active_memory_context = ""
+
+    def ask_task(self, prompt: str, task_name: str = "", task_event: str = ""):
+        context_lines = [
+            "SCHEDULED TASK EVENT",
+            "This turn was triggered by Jarvis's task scheduler, not by a new live user message.",
+            "Execute the saved task now.",
+            "If this is a reminder or timer, tell the user the reminder or timer is due.",
+            "Do not ask what the user means just because the saved prompt is short.",
+        ]
+        if task_name:
+            context_lines.append(f"Task name: {task_name}")
+        if task_event:
+            context_lines.append(f"Task event: {task_event}")
+
+        task_label = task_name or "scheduled task"
+        history_content = (
+            "Scheduled task triggered.\n"
+            f"Task name: {task_label}\n"
+            f"Task event: {task_event or 'unknown'}\n"
+            f"Saved task prompt: {prompt}"
+        )
+        return self.ask_agent(
+            prompt,
+            invocation_context="\n".join(context_lines),
+            history_content=history_content,
+            observation_input=history_content,
+        )
 
     def _build_memory_context(self, input_text: str) -> str:
         if not self.memory_context_builder:
@@ -301,3 +343,7 @@ _agent_instance = Agent()
 
 def ask_agent(input_text):
     return _agent_instance.ask_agent(input_text)
+
+
+def ask_task(prompt: str, task_name: str = "", task_event: str = ""):
+    return _agent_instance.ask_task(prompt, task_name=task_name, task_event=task_event)

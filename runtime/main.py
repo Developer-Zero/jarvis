@@ -61,7 +61,7 @@ import frontend.gui as gui
 gui.run_startup_onboarding()
 
 import config
-from backend.agent import ask_agent
+from backend.agent import ask_agent, ask_task
 from backend.audio.audio_ducking import restore as restore_audio_ducking
 from backend.audio.sounds import START_SOUND, WAKE_SOUND, play_sound, play_sound_async
 from backend.speech.record_speech import preload_vad_model, record_user_speech
@@ -183,14 +183,14 @@ def record_speech() -> str | None:
         return None
 
 
-def agent(user_input: str, sender: str = "User") -> None:
+def agent(user_input: str, sender: str = "User", responder=ask_agent) -> None:
     with _agent_run_lock:
         gui.begin_thinking()
         try:
             gui.send_message(sender, user_input)
             gui.set_state("thinking")
 
-            response = ask_agent(user_input)
+            response = responder(user_input)
             if gui.get_muted():
                 return
 
@@ -213,6 +213,21 @@ def run_task(task: dict) -> None:
         return
 
     task_name = str(task.get("name") or task.get("id") or "task")
+    task_event = str(task.get("event") or "")
+    logging.info("Running scheduled task: %s", task_name)
+    try:
+        agent(
+            prompt,
+            sender="System",
+            responder=lambda task_prompt: ask_task(
+                task_prompt,
+                task_name=task_name,
+                task_event=task_event,
+            ),
+        )
+    except Exception as exc:
+        logging.exception("Scheduled task failed: %s", task_name)
+        gui.send_message("System", f"Task failed: {exc}")
 
 
 def stop_task_scheduler() -> None:
