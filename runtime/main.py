@@ -84,6 +84,7 @@ _recording_lock = threading.Lock()
 _active_recording_stop: threading.Event | None = None
 _agent_run_lock = threading.Lock()
 _task_scheduler: TaskScheduler | None = None
+_speech_interrupted_for_listening = threading.Event()
 
 
 def cancel_active_recording() -> None:
@@ -128,7 +129,58 @@ def listen_for_wake_word() -> bool:
                     return False
 
                 if detected:
+                    _speech_interrupted_for_listening.set()
+                    cancel_tts()
                     return True
+
+
+def watch_tts_interruption(
+    stop_event: threading.Event,
+    interrupted_event: threading.Event,
+) -> None:
+    try:
+        with WakeWordDetector(input_lock_timeout=0.1) as detector:
+            while not stop_event.is_set() and not gui.get_muted():
+                try:
+                    detected = detector.detect()
+                except Exception as exc:
+                    logging.exception("TTS interruption detection failed: %s", exc)
+                    return
+
+                if detected:
+                    logging.info("Wake word detected during TTS; interrupting speech.")
+                    interrupted_event.set()
+                    _speech_interrupted_for_listening.set()
+                    cancel_tts()
+                    gui.set_state("listening")
+                    return
+    except TimeoutError:
+        return
+    except Exception as exc:
+        logging.exception("TTS interruption monitor failed: %s", exc)
+
+
+def speak_with_interruption(response: str) -> bool:
+    stop_event = threading.Event()
+    interrupted_event = threading.Event()
+    _speech_interrupted_for_listening.clear()
+    queue_tts(response)
+
+    interruption_thread = threading.Thread(
+        target=watch_tts_interruption,
+        args=(stop_event, interrupted_event),
+        daemon=True,
+    )
+    interruption_thread.start()
+
+    try:
+        wait_for_tts()
+    finally:
+        stop_event.set()
+        interruption_thread.join(timeout=0.5)
+
+    return interrupted_event.is_set() or _speech_interrupted_for_listening.is_set()
+
 
 def delay_listening(stop_event: threading.Event):
     time.sleep(config.calibration_seconds)
@@ -183,7 +235,9 @@ def record_speech() -> str | None:
         return None
 
 
-def agent(user_input: str, sender: str = "User", responder=ask_agent) -> None:
+def agent(user_input: str, sender: str = "User", responder=ask_agent) -> bool:
+    interrupted = False
+
     with _agent_run_lock:
         gui.begin_thinking()
         try:
@@ -192,19 +246,26 @@ def agent(user_input: str, sender: str = "User", responder=ask_agent) -> None:
 
             response = responder(user_input)
             if gui.get_muted():
-                return
+                return interrupted
 
             if response:
                 gui.send_message("Jarvis", response)
                 if gui.get_muted():
                     cancel_tts()
-                    return
+                    return interrupted
 
-                queue_tts(response)
-                wait_for_tts()
+                interrupted = speak_with_interruption(response)
+                return interrupted
         finally:
             gui.end_thinking()
-            gui.set_state("muted" if gui.get_muted() else "idle")
+            if gui.get_muted():
+                gui.set_state("muted")
+            elif interrupted:
+                gui.set_state("listening")
+            else:
+                gui.set_state("idle")
+
+    return interrupted
 
 
 def run_task(task: dict) -> None:

@@ -15,11 +15,13 @@ class WakeWordDetector:
         threshold: float = wake_word_threshold,
         sample_rate: int = samplerate,
         frame_size: int = block_size,
+        input_lock_timeout: float | None = None,
     ):
         self.model_name = model_name
         self.threshold = threshold
         self.sample_rate = sample_rate
         self.frame_size = frame_size
+        self.input_lock_timeout = input_lock_timeout
         self.model = None
         self.pyaudio = None
         self.stream = None
@@ -28,9 +30,6 @@ class WakeWordDetector:
     def start(self) -> None:
         if self.stream is not None:
             return
-
-        input_stream_lock.acquire()
-        self._input_lock_acquired = True
 
         try:
             import pyaudio
@@ -41,6 +40,13 @@ class WakeWordDetector:
                 inference_framework="onnx",
             )
             self.pyaudio = pyaudio.PyAudio()
+
+            if self.input_lock_timeout is None:
+                input_stream_lock.acquire()
+            elif not input_stream_lock.acquire(timeout=self.input_lock_timeout):
+                raise TimeoutError("Input stream is already in use.")
+
+            self._input_lock_acquired = True
             self.stream = self.pyaudio.open(
                 format=pyaudio.paInt16,
                 channels=1,
